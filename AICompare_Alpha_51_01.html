@@ -232,8 +232,428 @@
   <div id="sidebar"></div>
   <div id="legend"></div>
 
-<script src="ai_compare_data.js"></script>
+
+<!-- SheetJS (xlsx) CDN for Excel parsing -->
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+<!-- File input for Excel upload -->
+<div style="position:fixed;top:10px;right:400px;z-index:2000;background:#232c3a;padding:8px 18px 8px 12px;border-radius:8px;box-shadow:0 2px 12px #0007;">
+  <label style="color:#ffe;font-weight:bold;">Load Excel:
+    <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="margin-left:8px;">
+  </label>
+</div>
+
 <script>
+let data = [];
+// let categories = []; // Now set after Excel load
+// --- GLOBALS for node attachment/detachment ---
+window.attachedNode = null;
+window.detachNode = function() {
+  if (window.attachedNode) {
+    window.attachedNode.attached = false;
+    if (window.attachedNode.el) {
+      window.attachedNode.el.classList.remove('attached');
+    }
+    window.attachedNode = null;
+    setNodeOpacities(null);
+    clearSidebar();
+  }
+};
+
+function handleExcelFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const workbook = XLSX.read(evt.target.result, {type: 'array'});
+    // Use first sheet
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+    console.log('Parsed Excel data:', data);
+    // Get all unique category names from all data rows
+    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
+    // Warn if data is empty or missing expected headers
+    if (!data.length) {
+      alert('No data rows found in the Excel file. Please check the file contents.');
+      return;
+    }
+    if (!data[0].Type && !data[0]['Name']) {
+      alert('Excel headers do not match expected names (e.g., "Type", "Name"). Please check the first row of your sheet.');
+      return;
+    }
+    // Now initialize the app (everything that used to run after ai_compare_data.js loaded)
+    initializeApp();
+  };
+  reader.readAsArrayBuffer(file);
+}
+document.getElementById('excelFileInput').addEventListener('change', handleExcelFile);
+
+// Wrap all main logic in a function to call after data is loaded
+function initializeApp() {
+  // --- Node Orbit Arcs (dblclick) ---
+  function addOrbitArcs(node) { /* ...existing code... */ }
+  function removeOrbitArcs(node) { /* ...existing code... */ }
+  function toggleOrbitArcs(node) {
+    if (!node._orbitArcs || node._orbitArcs.length === 0) {
+      addOrbitArcs(node);
+    } else {
+      removeOrbitArcs(node);
+    }
+  }
+  // ...existing code for clearing and creating nodes...
+
+  // (Move this block to after nodes are created)
+
+  // At the end of node creation, set up dblclick event listeners:
+  setTimeout(() => {
+    window.nodes.forEach((node) => {
+      node.el.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        // Deselect and remove arcs from all other nodes
+        window.nodes.forEach(n => { if (n !== node) removeOrbitArcs(n); });
+        toggleOrbitArcs(node);
+      });
+    });
+    main.addEventListener('click', (e) => {
+      // Only remove arcs if clicking the background, not a node or its children
+      let el = e.target;
+      while (el) {
+        if (el.classList && el.classList.contains('node')) return;
+        el = el.parentElement;
+      }
+      window.nodes.forEach(n => removeOrbitArcs(n));
+    });
+  }, 0);
+  // Clear previous nodes, legend, sidebar
+  document.getElementById('main').innerHTML = '';
+  document.getElementById('legend').innerHTML = '';
+  document.getElementById('sidebar').innerHTML = '';
+  // Reset global variables
+  window.typeColors = {};
+  window.nodes = [];
+  window.selectedNode = null;
+  window.attachedNode = null;
+  window.hoverNode = null;
+  window.hoverStartTime = 0;
+  window.boundarySegmentsByType = {};
+  // Generate unique types and their colors
+  const palette = [
+    "rgba(30,64,175,0.78)",   "rgba(244,63,94,0.78)",   "rgba(34,211,238,0.78)",  "rgba(245,158,66,0.78)",
+    "rgba(162,28,175,0.78)",  "rgba(22,163,74,0.78)",   "rgba(251,191,36,0.78)",  "rgba(190,24,93,0.78)",
+    "rgba(14,165,233,0.78)",  "rgba(248,113,113,0.78)", "rgba(124,58,237,0.78)",  "rgba(250,204,21,0.78)",
+    "rgba(225,29,72,0.78)",   "rgba(132,204,22,0.78)",  "rgba(99,102,241,0.78)",  "rgba(251,113,133,0.78)",
+    "rgba(244,114,182,0.78)", "rgba(20,184,166,0.78)",  "rgba(252,211,77,0.78)",  "rgba(192,38,211,0.78)"
+  ];
+  let i = 0;
+  for (const row of data) {
+    const type = row.Type || "Other";
+    if (!(window.typeColors[type])) {
+      window.typeColors[type] = palette[i++ % palette.length];
+    }
+  }
+  // Group nodes by type in clusters at the start
+  const typeOrder = Object.keys(window.typeColors);
+  const typeToNodes = {};
+  typeOrder.forEach(type => typeToNodes[type] = []);
+  data.forEach((row, idx) => {
+    typeToNodes[row.Type].push({row, idx});
+  });
+  let nodeIdx = 0;
+  const clusterRadius = 180;
+  const clusterCenterRadius = 220;
+  const clusterAngleStep = (2 * Math.PI) / typeOrder.length;
+  typeOrder.forEach((type, tIdx) => {
+    const clusterCount = typeToNodes[type].length;
+    const clusterAngle = tIdx * clusterAngleStep;
+    const centerX = Math.cos(clusterAngle) * clusterCenterRadius + 320;
+    const centerY = Math.sin(clusterAngle) * clusterCenterRadius + 320;
+    const nodeCircleRadius = 60 + clusterCount * 2;
+    typeToNodes[type].forEach((item, i) => {
+      const angle = (2 * Math.PI * i) / clusterCount;
+      const x = centerX + Math.cos(angle) * nodeCircleRadius + Math.random()*8;
+      const y = centerY + Math.sin(angle) * nodeCircleRadius + Math.random()*8;
+      const div = document.createElement('div');
+      div.className = 'node';
+      const name = item.row.Name ? item.row.Name.split(/\s+/).join('<br>') : '';
+      const typeText = item.row.Type || '';
+      let categoryText = '';
+      for (const cat of Object.keys(item.row)) {
+        if (cat !== 'Name' && cat !== 'Type' && item.row[cat]) {
+          categoryText = item.row[cat];
+          break;
+        }
+      }
+      div.innerHTML = `
+        <div style='display:flex;flex-direction:column;align-items:center;width:100%;height:100%;justify-content:center;'>
+          <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${typeText}</span>
+          <span style='font-size:0.95em;line-height:1.18;color:#fff;font-weight:bold;'>${name}</span>
+          <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${categoryText}</span>
+        </div>
+      `;
+      div.style.background = window.typeColors[type];
+      div.style.borderColor = window.typeColors[type] || '#fff2';
+      const glowColor = window.typeColors[type].replace(/(rgba?\([^,]+,[^,]+,[^,]+),\s*([\d.]+)\)/, '$1,0.18)');
+      div.style.setProperty('--node-glow', glowColor);
+      div.style.left = `${x}px`;
+      div.style.top = `${y}px`;
+      document.getElementById('main').appendChild(div);
+      div.dataset.dataIdx = item.idx;
+      let velocityScale;
+      if (clusterCount > 5) {
+        velocityScale = 0.0012;
+      } else if (clusterCount > 4) {
+        velocityScale = 0.008;
+      } else {
+        velocityScale = 0.022;
+      }
+      let vx = (Math.random() - 0.5) * velocityScale;
+      let vy = (Math.random() - 0.5) * velocityScale;
+      if (clusterCount > 5) {
+        const maxV = velocityScale * 0.5;
+        vx = Math.max(-maxV, Math.min(vx, maxV));
+        vy = Math.max(-maxV, Math.min(vy, maxV));
+      }
+      window.nodes.push({
+        el: div,
+        x, y,
+        vx,
+        vy,
+        idx: item.idx,
+        attached: false,
+        hoverTimer: null,
+        lastHover: 0,
+        radius: 55,
+        type: type
+      });
+      nodeIdx++;
+    });
+  });
+  // --- Animation, Physics, and Event Listeners ---
+  // Remove any previous event listeners by replacing main and linesCanvas
+  const main = document.getElementById('main');
+  const linesCanvas = document.getElementById('lines-canvas');
+  const ctx = linesCanvas.getContext('2d');
+  // Resize canvas
+  function resizeCanvas() {
+    linesCanvas.width = window.innerWidth - 420;
+    linesCanvas.height = window.innerHeight;
+    linesCanvas.style.position = 'absolute';
+    linesCanvas.style.left = '0';
+    linesCanvas.style.top = '0';
+    linesCanvas.style.zIndex = '0';
+    linesCanvas.style.pointerEvents = 'none';
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // --- Repulsion Physics ---
+  function applyRepulsion() {
+    const repulsionStrength = 60;
+    const maxRepulseDelta = 0.04;
+    for (let i = 0; i < window.nodes.length; i++) {
+      for (let j = i + 1; j < window.nodes.length; j++) {
+        const n1 = window.nodes[i];
+        const n2 = window.nodes[j];
+        const dx = (n2.x + n2.radius) - (n1.x + n1.radius);
+        const dy = (n2.y + n2.radius) - (n1.y + n1.radius);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = n1.radius + n2.radius + 4;
+        if (dist < minDist && dist > 0) {
+          const force = repulsionStrength / (dist * dist);
+          let fx = force * dx / dist;
+          let fy = force * dy / dist;
+          fx = Math.max(-maxRepulseDelta, Math.min(fx, maxRepulseDelta));
+          fy = Math.max(-maxRepulseDelta, Math.min(fy, maxRepulseDelta));
+          if (!n1.attached) { n1.vx -= fx; n1.vy -= fy; }
+          if (!n2.attached) { n2.vx += fx; n2.vy += fy; }
+          // Separate overlapping nodes
+          const overlap = minDist - dist;
+          if (overlap > 0) {
+            const sepX = (dx / dist) * (overlap / 2);
+            const sepY = (dy / dist) * (overlap / 2);
+            if (!n1.attached) { n1.x -= sepX; n1.y -= sepY; }
+            if (!n2.attached) { n2.x += sepX; n2.y += sepY; }
+          }
+        }
+      }
+    }
+  }
+
+  // --- Animation Loop ---
+  function animate() {
+    // Physics
+    applyRepulsion();
+    // Move nodes
+    for (const node of window.nodes) {
+      if (!node.attached) {
+        node.x += node.vx;
+        node.y += node.vy;
+        node.el.style.left = node.x + 'px';
+        node.el.style.top = node.y + 'px';
+      }
+    }
+    // Draw lines
+    drawTypeLines();
+    requestAnimationFrame(animate);
+  }
+  window.animate = animate;
+  // --- Draw lines between nodes (convex hulls, etc.) ---
+  function drawTypeLines() {
+    ctx.clearRect(0, 0, linesCanvas.width, linesCanvas.height);
+    window.boundarySegmentsByType = {};
+    function getConvexHull(points) {
+      points = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+      const cross = (o, a, b) => (a.x - o.x)*(b.y - o.y) - (a.y - o.y)*(b.x - o.x);
+      const lower = [];
+      for (const p of points) {
+        while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+        lower.push(p);
+      }
+      const upper = [];
+      for (let i = points.length-1; i >= 0; i--) {
+        const p = points[i];
+        while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+        upper.push(p);
+      }
+      upper.pop();
+      lower.pop();
+      return lower.concat(upper);
+    }
+    const typeOrder = Object.keys(window.typeColors);
+    for (const type of typeOrder) {
+      const typeNodes = window.nodes.filter(n => n.type === type);
+      const points = typeNodes.map(n => ({x: n.x + 55, y: n.y + 55, node: n}));
+      const hull = getConvexHull(points);
+      window.boundarySegmentsByType[type] = [];
+      for (let i = 0; i < hull.length; i++) {
+        const a = hull[i];
+        const b = hull[(i+1)%hull.length];
+        window.boundarySegmentsByType[type].push([a.node, b.node]);
+        ctx.save();
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([18, 12]);
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const ux = dx/dist;
+        const uy = dy/dist;
+        const r1 = a.node.radius;
+        const r2 = b.node.radius;
+        const x1 = a.x + ux*r1;
+        const y1 = a.y + uy*r1;
+        const x2 = b.x - ux*r2;
+        const y2 = b.y - uy*r2;
+        const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.15, window.typeColors[type]);
+        grad.addColorStop(0.5, window.typeColors[type]);
+        grad.addColorStop(0.85, window.typeColors[type]);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        const glowColor = window.typeColors[type].replace(/(rgba?\([^,]+,[^,]+,[^,]+),\s*([\d.]+)\)/, '$1,0.18)');
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+    // Mask out node circles so lines are not visible behind them
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const node of window.nodes) {
+      const cx = node.x + 55;
+      const cy = node.y + 55;
+      ctx.beginPath();
+      ctx.arc(cx, cy, node.radius + 1.5, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // --- Node Interactions ---
+  // Dragging
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  window.selectedNode = null;
+  window.nodes.forEach((node) => {
+    node.el.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        isDragging = true;
+        const rect = node.el.getBoundingClientRect();
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+        e.preventDefault();
+        node.el.style.zIndex = 100;
+        node.el.classList.add('selected');
+        window.selectedNode = node;
+      }
+    });
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (isDragging && window.selectedNode) {
+      let x = e.clientX - dragOffsetX;
+      let y = e.clientY - dragOffsetY;
+      x = Math.max(10, Math.min(x, window.innerWidth - 420 - window.selectedNode.el.offsetWidth));
+      y = Math.max(8, Math.min(y, window.innerHeight - 60 - window.selectedNode.el.offsetHeight));
+      window.selectedNode.x = x;
+      window.selectedNode.y = y;
+      window.selectedNode.el.style.left = x + 'px';
+      window.selectedNode.el.style.top = y + 'px';
+      window.selectedNode.vx = 0;
+      window.selectedNode.vy = 0;
+    }
+  });
+  document.addEventListener('mouseup', (e) => {
+    if (isDragging && window.selectedNode) {
+      isDragging = false;
+      window.selectedNode.el.style.zIndex = '';
+      window.selectedNode.el.classList.remove('selected');
+      window.selectedNode = null;
+    }
+  });
+  // Hover/Sidebar
+  window.nodes.forEach((node) => {
+    node.el.addEventListener('mouseenter', (e) => {
+      window.hoverNode = node;
+      window.hoverStartTime = Date.now();
+      node.el.classList.add('hovering');
+      const dataIdx = parseInt(node.el.dataset.dataIdx, 10);
+      showSidebar(data[dataIdx], node.el);
+    });
+    node.el.addEventListener('mouseleave', () => {
+      window.hoverNode = null;
+      window.hoverStartTime = 0;
+      node.el.classList.remove('hovering');
+      clearSidebar();
+    });
+  });
+  // Populate legend
+  const legend = document.getElementById('legend');
+  for (const [type, color] of Object.entries(window.typeColors)) {
+    const span = document.createElement('span');
+    span.innerHTML = `<span class="legend-dot" style="background:${color}"></span>${type}`;
+    legend.appendChild(span);
+  }
+  // Start animation
+  window.animate();
+}
+
+// Optionally, auto-load a default Excel file for demo (uncomment and set path if desired)
+// fetch('Data/AI_Tools_Table_07.xlsx').then(resp => resp.arrayBuffer()).then(buf => {
+//   const workbook = XLSX.read(buf, {type: 'array'});
+//   const sheetName = workbook.SheetNames[0];
+//   const sheet = workbook.Sheets[sheetName];
+//   data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+//   categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
+//   initializeApp();
+// });
 
 // Generate unique types and their colors (with alpha for translucency)
 const typeColors = {};
@@ -267,10 +687,7 @@ for (const row of data) {
   }
 }
 
-// Get all unique category names from all data rows
-const categories = Array.from(
-  new Set(data.flatMap(row => Object.keys(row)))
-);
+// categories is now set after Excel load
 
 // Floating node positions/speeds
 const nodes = [];
