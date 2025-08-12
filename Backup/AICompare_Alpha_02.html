@@ -1,0 +1,242 @@
+  </style>
+</head>
+<body>
+  <div id="main"></div>
+  <div id="sidebar"></div>
+  <div id="legend"></div>
+
+<script src="ai_compare_data.js"></script>
+<script>
+runVisualization();
+function runVisualization() {
+  // Generate unique types and their colors
+  const typeColors = {};
+  const palette = [
+    "#1e40af", // deep blue
+    "#f43f5e", // vivid red
+    "#22d3ee", // cyan
+    "#f59e42", // orange
+    "#a21caf", // purple
+    "#16a34a", // green
+    "#fbbf24", // yellow
+    "#be185d", // magenta
+    "#0ea5e9", // blue
+    "#f87171", // coral
+    "#7c3aed", // violet
+    "#facc15", // gold
+    "#e11d48", // crimson
+    "#84cc16", // lime
+    "#6366f1", // periwinkle
+    "#fb7185", // rose
+    "#f472b6", // pink
+    "#14b8a6", // teal
+    "#fcd34d", // pale yellow
+    "#c026d3", // purple dark
+  ];
+  let i = 0;
+  for (const row of data) {
+    const type = row.Type || "Other";
+    if (!(type in typeColors)) {
+      typeColors[type] = palette[i++ % palette.length];
+    }
+  }
+
+  // Get all unique category names from all data rows
+  const categories = Array.from(
+    new Set(data.flatMap(row => Object.keys(row)))
+  );
+
+  // Floating node positions/speeds
+  const nodes = [];
+  const main = document.getElementById('main');
+  main.innerHTML = '';
+
+  // Cluster nodes by Type
+  const typeOrder = Object.keys(typeColors);
+  const typeToNodes = {};
+  typeOrder.forEach(type => typeToNodes[type] = []);
+  data.forEach((row, idx) => {
+    typeToNodes[row.Type].push({row, idx});
+  });
+  let nodeIdx = 0;
+  typeOrder.forEach((type, tIdx) => {
+    const clusterCount = typeToNodes[type].length;
+    // Arrange in a circle per type cluster
+    const centerX = 250 + tIdx * 180;
+    const centerY = 220 + (tIdx % 2) * 180;
+    const radius = 80 + clusterCount * 2;
+    typeToNodes[type].forEach((item, i) => {
+      const angle = (2 * Math.PI * i) / clusterCount;
+      const x = centerX + Math.cos(angle) * radius + Math.random()*10;
+      const y = centerY + Math.sin(angle) * radius + Math.random()*10;
+      const div = document.createElement('div');
+      div.className = 'node';
+      div.textContent = item.row.Name;
+      div.style.background = typeColors[type];
+      div.style.borderColor = typeColors[type] || '#fff2';
+      div.style.left = `${x}px`;
+      div.style.top = `${y}px`;
+      main.appendChild(div);
+      // Store the correct data index for sidebar lookup
+      div.dataset.dataIdx = item.idx;
+      nodes.push({
+        el: div,
+        x, y,
+        vx: (Math.random()-0.5) * 0.6 - 0.05,
+        vy: (Math.random()-0.5) * 0.6 - 0.05,
+        idx: item.idx,
+        attached: false,
+        hoverTimer: null,
+        lastHover: 0
+      });
+      nodeIdx++;
+    });
+  });
+
+  // Mouse event listeners for each node (reapply for clustered nodes)
+  nodes.forEach((node) => {
+    node.el.addEventListener('mouseenter', (e) => {
+      hoverNode = node;
+      hoverStartTime = Date.now();
+      node.el.classList.add('selected');
+      // Use the correct data index from dataset
+      const dataIdx = parseInt(node.el.dataset.dataIdx, 10);
+      showSidebar(data[dataIdx], node.el);
+      // Start timer for 3s hover
+      if (node.hoverTimer) clearTimeout(node.hoverTimer);
+      node.hoverTimer = setTimeout(() => {
+        if (hoverNode === node) {
+          attachNode(node, e);
+        }
+      }, 3000);
+      setNodeOpacities(attachedNode ? attachedNode.idx : null);
+    });
+    node.el.addEventListener('mouseleave', () => {
+      hoverNode = null;
+      hoverStartTime = 0;
+      node.el.classList.remove('selected');
+      clearSidebar();
+      if (node.hoverTimer) clearTimeout(node.hoverTimer);
+    });
+  });
+
+  // Mouse move handler for attached node
+  document.addEventListener('mousemove', (e) => {
+    if (attachedNode && attachedNode.attached) {
+      // Keep node centered on mouse, but within main area
+      const nodeRect = attachedNode.el.getBoundingClientRect();
+      let x = e.clientX - nodeRect.width/2;
+      let y = e.clientY - nodeRect.height/2;
+      // Clamp to main area
+      x = Math.max(10, Math.min(x, window.innerWidth - 420 - nodeRect.width));
+      y = Math.max(8, Math.min(y, window.innerHeight - 60 - nodeRect.height));
+      attachedNode.x = x;
+      attachedNode.y = y;
+      attachedNode.el.style.left = x + 'px';
+      attachedNode.el.style.top = y + 'px';
+    }
+  });
+
+  document.addEventListener('contextmenu', (e) => {
+    if (attachedNode && attachedNode.attached) {
+      e.preventDefault();
+      detachNode();
+    }
+  });
+
+  // Detach node if mouse leaves all nodes for 3s
+  let detachTimer = null;
+  main.addEventListener('mouseleave', () => {
+    if (detachTimer) clearTimeout(detachTimer);
+    detachTimer = setTimeout(() => {
+      detachNode();
+    }, 3000);
+  });
+  main.addEventListener('mouseenter', () => {
+    if (detachTimer) clearTimeout(detachTimer);
+  });
+
+  // Floating animation
+  function animate() {
+    for (const node of nodes) {
+      if (!node.attached) {
+        node.x += node.vx;
+        node.y += node.vy;
+        // Bounce off main div edges
+        if (node.x < 10 || node.x > window.innerWidth - 420) node.vx *= -1;
+        if (node.y < 8 || node.y > window.innerHeight - 60) node.vy *= -1;
+        node.el.style.left = node.x + 'px';
+        node.el.style.top = node.y + 'px';
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  // Sidebar logic
+  const sidebar = document.getElementById('sidebar');
+  function showSidebar(row, nodeEl) {
+    sidebar.innerHTML = '';
+    categories.forEach(cat => {
+      const catDiv = document.createElement('div');
+      catDiv.className = 'sidebar-category';
+      catDiv.textContent = cat;
+      sidebar.appendChild(catDiv);
+      const valDiv = document.createElement('div');
+      valDiv.className = 'sidebar-value';
+      valDiv.textContent = row[cat] || '';
+      // Custom spacing for Brief Purpose/Description
+      if (cat === 'Brief Purpose/Description') {
+        valDiv.style.marginBottom = '34px';
+      } else {
+        valDiv.style.marginBottom = '4px';
+      }
+      sidebar.appendChild(valDiv);
+    });
+    // Floating UI optional - for advanced positioning!
+    // You could add floating popups here if you want.
+  }
+  function clearSidebar() {
+    // Optionally: keep previous info, or clear
+    // sidebar.innerHTML = '';
+  }
+
+  // Populate legend
+  const legend = document.getElementById('legend');
+  legend.innerHTML = '';
+  for (const [type, color] of Object.entries(typeColors)) {
+    const span = document.createElement('span');
+    span.innerHTML = `<span class="legend-dot" style="background:${color}"></span>${type}`;
+    legend.appendChild(span);
+  }
+}
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Floating Nodes Visualization</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Floating UI CDN -->
+  <script src="https://unpkg.com/@floating-ui/dom"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #181e26;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+    }
+    #main {
+      flex: 1 1 0;
+      position: relative;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+</script>
+</body>
+</html>

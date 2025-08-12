@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Floating Nodes Visualization</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Floating UI CDN -->
+  <script src="https://unpkg.com/@floating-ui/dom"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #120825;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+    }
+    #main {
+      flex: 1 1 0;
+      position: relative;
+      overflow: hidden;
+      height: 100vh;
+    }
+    .node {
+      position: absolute;
+      border-radius: 50%;
+      box-shadow:
+        0 0 12px 4px rgba(255,255,255,0.82),
+        0 0 28px 10px var(--node-glow, rgba(120,60,255,0.10)),
+        0 0 44px 18px var(--node-glow, rgba(120,60,255,0.04));
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 110px;
+      height: 110px;
+      padding: 0;
+      font-weight: bold;
+      font-size: 1.1em;
+      cursor: pointer;
+      transition: box-shadow 0.2s, transform 0.2s;
+      border: 2px solid #fff2;
+      user-select: none;
+      will-change: transform;
+      text-align: center;
+      line-height: 1.18;
+      word-break: break-word;
+      white-space: pre-line;
+      /* No animation, constant glow */
+    }
+
+    @keyframes throb-glow-selected {
+      0% {
+        box-shadow:
+          0 0 0 2px rgba(255,255,255,0.38),
+          0 0 5px 7px #a259ff66,
+          0 0 8px 10px #a259ff22;
+      }
+      50% {
+        box-shadow:
+          0 0 0 4px rgba(255,255,255,0.52),
+          0 0 5px 7px #a259ffcc,
+          0 0 10px 16px #a259ff33;
+      }
+      100% {
+        box-shadow:
+          0 0 0 2px rgba(255,255,255,0.38),
+          0 0 5px 7px #a259ff66,
+          0 0 8px 10px #a259ff22;
+      }
+    }
+    /* Small orbiting circles for selection */
+    .orbit-circle {
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(162,89,255,0.38);
+      border: 2.5px solid #a259ff;
+      box-shadow:
+        0 0 8px 2px #a259ff88,
+        0 0 18px 6px #a259ff22;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.38s cubic-bezier(.4,0,.6,1);
+      z-index: 0;
+    }
+    .orbit-circle.visible {
+      opacity: 1;
+    }
+
+    @keyframes throb-glow-hover {
+      0% {
+        box-shadow:
+          0 0 0 2px rgba(255,255,255,0.38),
+          0 0 5px 7px #ffe06666,
+          0 0 8px 10px #ffe06609;
+      }
+      50% {
+        box-shadow:
+          0 0 0 4px rgba(255,255,255,0.52),
+          0 0 5px 7px #ffe066cc,
+          0 0 10px 16px #ffe06613;
+      }
+      100% {
+        box-shadow:
+          0 0 0 2px rgba(255,255,255,0.38),
+          0 0 5px 7px #ffe06666,
+          0 0 8px 10px #ffe06609;
+      }
+    }
+
+    .node.selected {
+      z-index: 1;
+      border: 0.66px solid #fff8;
+      transform: scale(1.10);
+      animation: throb-glow-selected 1.2s infinite cubic-bezier(.4,0,.6,1);
+    }
+    .node.hovering {
+      z-index: 1;
+      border: 0.66px solid #fff8;
+      transform: scale(1.10);
+      animation: throb-glow-hover 1.2s infinite cubic-bezier(.4,0,.6,1);
+    }
+    .node.selected.hovering {
+      animation: throb-glow-selected 1.2s infinite cubic-bezier(.4,0,.6,1);
+    }
+    #sidebar {
+      width: 370px;
+      background: #232c3a;
+      color: #e6eaf0;
+      height: 100vh;
+      box-shadow: -4px 0 22px #0007;
+      padding: 44px 28px 28px 34px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      overflow-y: auto;
+      position: fixed;
+      right: 0;
+      top: 0;
+      z-index: 1000;
+    }
+    .sidebar-category {
+      margin-top: 0.5px;
+      font-size: 1.04em;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #ffecb3;
+      margin-bottom: 0.5px;
+    }
+    .sidebar-value {
+      min-height: 32px;
+      margin-bottom: 34px;
+      font-size: 1.06em;
+      color: #fff;
+      font-weight: 400;
+      word-break: break-word;
+      max-width: 95%;
+    }
+    .sidebar-category:first-child {
+      margin-top: 0;
+    }
+    /* Simple legend */
+    #legend {
+      position: absolute;
+      bottom: 18px;
+      left: 30px;
+      background: #262f43;
+      color: #ffe;
+      padding: 10px 18px 10px 15px;
+      border-radius: 18px;
+      font-size: 0.98em;
+      box-shadow: 0 4px 22px #0005;
+      z-index: 100;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .legend-dot {
+      width: 18px; height: 18px; display: inline-block; border-radius: 50%; margin-right: 8px; vertical-align: middle;
+    }
+    @media (max-width: 1100px) {
+      #sidebar { width: 98vw; left: 0; top: auto; bottom: 0; height: auto; position: fixed; right: unset;}
+      #main { height: calc(100vh - 240px);}
+    }
+  </style>
+</head>
+<body>
+  <canvas id="lines-canvas"></canvas>
+  <div id="main"></div>
+  <div id="sidebar"></div>
+  <div id="legend"></div>
+
+<script src="ai_compare_data.js"></script>
+<script>
+
+// Generate unique types and their colors (with alpha for translucency)
+const typeColors = {};
+const palette = [
+  "rgba(30,64,175,0.78)",   // deep blue
+  "rgba(244,63,94,0.78)",   // vivid red
+  "rgba(34,211,238,0.78)",  // cyan
+  "rgba(245,158,66,0.78)",  // orange
+  "rgba(162,28,175,0.78)",  // purple
+  "rgba(22,163,74,0.78)",   // green
+  "rgba(251,191,36,0.78)",  // yellow
+  "rgba(190,24,93,0.78)",   // magenta
+  "rgba(14,165,233,0.78)",  // blue
+  "rgba(248,113,113,0.78)", // coral
+  "rgba(124,58,237,0.78)",  // violet
+  "rgba(250,204,21,0.78)",  // gold
+  "rgba(225,29,72,0.78)",   // crimson
+  "rgba(132,204,22,0.78)",  // lime
+  "rgba(99,102,241,0.78)",  // periwinkle
+  "rgba(251,113,133,0.78)", // rose
+  "rgba(244,114,182,0.78)", // pink
+  "rgba(20,184,166,0.78)",  // teal
+  "rgba(252,211,77,0.78)",  // pale yellow
+  "rgba(192,38,211,0.78)",  // purple dark
+];
+let i = 0;
+for (const row of data) {
+  const type = row.Type || "Other";
+  if (!(type in typeColors)) {
+    typeColors[type] = palette[i++ % palette.length];
+  }
+}
+
+// Get all unique category names from all data rows
+const categories = Array.from(
+  new Set(data.flatMap(row => Object.keys(row)))
+);
+
+// Floating node positions/speeds
+const nodes = [];
+const main = document.getElementById('main');
+const linesCanvas = document.getElementById('lines-canvas');
+const ctx = linesCanvas.getContext('2d');
+
+function resizeCanvas() {
+  linesCanvas.width = window.innerWidth - 420;
+  linesCanvas.height = window.innerHeight;
+  linesCanvas.style.position = 'absolute';
+  linesCanvas.style.left = '0';
+  linesCanvas.style.top = '0';
+  linesCanvas.style.zIndex = '0';
+  linesCanvas.style.pointerEvents = 'none';
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// --- Repulsion Physics ---
+function applyRepulsion() {
+  const repulsionStrength = 350; // Restore previous value
+  const maxRepulseDelta = 0.12; // Clamp max velocity change per frame from repulsion
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const n1 = nodes[i];
+      const n2 = nodes[j];
+      const dx = (n2.x + n2.radius) - (n1.x + n1.radius);
+      const dy = (n2.y + n2.radius) - (n1.y + n1.radius);
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minDist = n1.radius + n2.radius + 4; // 4px buffer just outside the edge
+      if (dist < minDist && dist > 0) {
+        // Repulsion force for circles
+        const force = repulsionStrength / (dist * dist);
+        let fx = force * dx / dist;
+        let fy = force * dy / dist;
+        // Clamp the force to avoid outlier effects
+        fx = Math.max(-maxRepulseDelta, Math.min(fx, maxRepulseDelta));
+        fy = Math.max(-maxRepulseDelta, Math.min(fy, maxRepulseDelta));
+        if (!n1.attached) {
+          n1.vx -= fx;
+          n1.vy -= fy;
+        }
+        if (!n2.attached) {
+          n2.vx += fx;
+          n2.vy += fy;
+        }
+        // Optional: separate overlapping nodes
+        const overlap = minDist - dist;
+        if (overlap > 0) {
+          const sepX = (dx / dist) * (overlap / 2);
+          const sepY = (dy / dist) * (overlap / 2);
+          if (!n1.attached) {
+            n1.x -= sepX;
+            n1.y -= sepY;
+          }
+          if (!n2.attached) {
+            n2.x += sepX;
+            n2.y += sepY;
+          }
+        }
+      }
+    }
+  }
+}
+
+
+// Group nodes by type in clusters at the start
+const typeOrder = Object.keys(typeColors);
+const typeToNodes = {};
+typeOrder.forEach(type => typeToNodes[type] = []);
+data.forEach((row, idx) => {
+  typeToNodes[row.Type].push({row, idx});
+});
+let nodeIdx = 0;
+const clusterRadius = 180;
+const clusterCenterRadius = 220;
+const clusterAngleStep = (2 * Math.PI) / typeOrder.length;
+typeOrder.forEach((type, tIdx) => {
+  const clusterCount = typeToNodes[type].length;
+  // Arrange clusters in a circle
+  const clusterAngle = tIdx * clusterAngleStep;
+  const centerX = Math.cos(clusterAngle) * clusterCenterRadius + 320;
+  const centerY = Math.sin(clusterAngle) * clusterCenterRadius + 320;
+  const nodeCircleRadius = 60 + clusterCount * 2;
+  typeToNodes[type].forEach((item, i) => {
+    // Arrange nodes in a circle within the cluster
+    const angle = (2 * Math.PI * i) / clusterCount;
+    const x = centerX + Math.cos(angle) * nodeCircleRadius + Math.random()*8;
+    const y = centerY + Math.sin(angle) * nodeCircleRadius + Math.random()*8;
+    const div = document.createElement('div');
+    div.className = 'node';
+    div.textContent = item.row.Name.split(/\s+/).join('\n');
+    div.style.background = typeColors[type];
+    div.style.borderColor = typeColors[type] || '#fff2';
+    // Make glow more translucent by lowering alpha
+    const glowColor = typeColors[type].replace(/(rgba?\([^,]+,[^,]+,[^,]+),\s*([\d.]+)\)/, '$1,0.18)');
+    div.style.setProperty('--node-glow', glowColor);
+    div.style.left = `${x}px`;
+    div.style.top = `${y}px`;
+    main.appendChild(div);
+    // Store the correct data index for sidebar lookup
+    div.dataset.dataIdx = item.idx;
+    // Reduce initial movement if more than 5 nodes in this type
+    let velocityScale;
+    if (clusterCount > 5) {
+      velocityScale = 0.001; // extremely calm for large groups
+    } else if (clusterCount > 4) {
+      velocityScale = 0.02;
+    } else {
+      velocityScale = 0.18;
+    }
+    // Clamp velocity to avoid outliers for large clusters
+    let vx = (Math.random() - 0.5) * velocityScale;
+    let vy = (Math.random() - 0.5) * velocityScale;
+    if (clusterCount > 5) {
+      const maxV = velocityScale * 0.5; // Clamp to 120% of scale
+      vx = Math.max(-maxV, Math.min(vx, maxV));
+      vy = Math.max(-maxV, Math.min(vy, maxV));
+    }
+    nodes.push({
+      el: div,
+      x, y,
+      vx,
+      vy,
+      idx: item.idx,
+      attached: false,
+      hoverTimer: null,
+      lastHover: 0,
+      radius: 55, // half of width/height for circle collision
+      type: type
+    });
+    nodeIdx++;
+  });
+});
+
+// --- Node Selection ---
+let selectedNode = null;
+
+// Helper to select a node and ensure only one is selected at a time
+// Helper to add orbit circles to a node
+function addOrbitCircles(node) {
+  removeOrbitCircles();
+  const orbitRadius = 115;
+  node._orbitCircles = [];
+  // Get parent node color and convert to rgba with 0.6 alpha
+  function to60Alpha(color) {
+    if (!color) return 'rgba(162,89,255,0.6)';
+    // If already rgba or rgb
+    let m = color.match(/^rgba?\(([^)]+)\)/);
+    if (m) {
+      let parts = m[1].split(',').map(s => s.trim());
+      if (parts.length >= 3) {
+        return `rgba(${parts[0]},${parts[1]},${parts[2]},0.6)`;
+      }
+    }
+    // If hex, convert to rgb
+    if (color[0] === '#') {
+      let hex = color.replace('#', '');
+      if (hex.length === 3) hex = hex.split('').map(x => x + x).join('');
+      if (hex.length === 6) {
+        const r = parseInt(hex.substring(0,2),16);
+        const g = parseInt(hex.substring(2,4),16);
+        const b = parseInt(hex.substring(4,6),16);
+        return `rgba(${r},${g},${b},0.6)`;
+      }
+    }
+    // fallback
+    return 'rgba(162,89,255,0.6)';
+  }
+  const parentColor = node.el.style.background || window.getComputedStyle(node.el).backgroundColor;
+  const orbitBg = to60Alpha(parentColor);
+  for (let i = 0; i < 8; i++) {
+    const angle = (2 * Math.PI * i) / 8;
+    const circle = document.createElement('div');
+    circle.className = 'orbit-circle';
+    circle.style.background = orbitBg;
+    main.appendChild(circle);
+    // Force reflow for transition
+    void circle.offsetWidth;
+    setTimeout(() => circle.classList.add('visible'), 10);
+    node._orbitCircles.push({el: circle, angle});
+  }
+}
+
+// Helper to remove orbit circles from the previously selected node
+function removeOrbitCircles() {
+  if (selectedNode && selectedNode._orbitCircles) {
+    for (const obj of selectedNode._orbitCircles) {
+      const circle = obj.el || obj;
+      circle.classList.remove('visible');
+      setTimeout(() => {
+        if (circle.parentNode) circle.parentNode.removeChild(circle);
+      }, 400);
+    }
+    selectedNode._orbitCircles = null;
+  }
+}
+
+function selectNode(node) {
+  if (selectedNode && selectedNode !== node) {
+    selectedNode.el.classList.remove('selected');
+    removeOrbitCircles();
+  }
+  selectedNode = node;
+  node.el.classList.add('selected');
+  addOrbitCircles(node);
+}
+
+nodes.forEach((node) => {
+  node.el.addEventListener('click', (e) => {
+    selectNode(node);
+    // You can add more logic here, e.g., showSidebar(data[node.idx], node.el);
+    e.stopPropagation();
+  });
+});
+
+// Deselect on background click
+main.addEventListener('click', () => {
+  if (selectedNode) {
+    selectedNode.el.classList.remove('selected');
+    removeOrbitCircles();
+    selectedNode = null;
+  }
+});
+
+// --- Node Dragging ---
+let isDragging = false;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
+
+// Allow drag on any node, and select it on drag
+nodes.forEach((node) => {
+  node.el.addEventListener('mousedown', (e) => {
+    if (e.button === 0) { // left mouse button
+      selectNode(node);
+      isDragging = true;
+      // Calculate offset between mouse and node top-left
+      const rect = node.el.getBoundingClientRect();
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+      // Prevent text selection
+      e.preventDefault();
+    }
+  });
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (isDragging && selectedNode) {
+    // Clamp to main area
+    let x = e.clientX - dragOffsetX;
+    let y = e.clientY - dragOffsetY;
+    x = Math.max(10, Math.min(x, window.innerWidth - 420 - selectedNode.el.offsetWidth));
+    y = Math.max(8, Math.min(y, window.innerHeight - 60 - selectedNode.el.offsetHeight));
+    selectedNode.x = x;
+    selectedNode.y = y;
+    selectedNode.el.style.left = x + 'px';
+    selectedNode.el.style.top = y + 'px';
+    // Stop node movement while dragging
+    selectedNode.vx = 0;
+    selectedNode.vy = 0;
+  }
+});
+
+document.addEventListener('mouseup', (e) => {
+  if (isDragging) {
+    isDragging = false;
+  }
+});
+
+// Remove .selected-node constant glow to avoid conflict with animated glow
+
+// Mouse event listeners for each node (reapply for clustered nodes)
+nodes.forEach((node) => {
+  node.el.addEventListener('mouseenter', (e) => {
+    hoverNode = node;
+    hoverStartTime = Date.now();
+    node.el.classList.add('hovering');
+    // Use the correct data index from dataset
+    const dataIdx = parseInt(node.el.dataset.dataIdx, 10);
+    showSidebar(data[dataIdx], node.el);
+    // Start timer for 3s hover
+    if (node.hoverTimer) clearTimeout(node.hoverTimer);
+    node.hoverTimer = setTimeout(() => {
+      if (hoverNode === node) {
+        attachNode(node, e);
+      }
+    }, 3000);
+    setNodeOpacities(attachedNode ? attachedNode.idx : null);
+  });
+  node.el.addEventListener('mouseleave', () => {
+    hoverNode = null;
+    hoverStartTime = 0;
+    node.el.classList.remove('hovering');
+    clearSidebar();
+    if (node.hoverTimer) clearTimeout(node.hoverTimer);
+  });
+});
+
+// Mouse move handler for attached node
+document.addEventListener('mousemove', (e) => {
+  if (attachedNode && attachedNode.attached) {
+    // Keep node centered on mouse, but within main area
+    const nodeRect = attachedNode.el.getBoundingClientRect();
+    let x = e.clientX - nodeRect.width/2;
+    let y = e.clientY - nodeRect.height/2;
+    // Clamp to main area
+    x = Math.max(10, Math.min(x, window.innerWidth - 420 - nodeRect.width));
+    y = Math.max(8, Math.min(y, window.innerHeight - 60 - nodeRect.height));
+    attachedNode.x = x;
+    attachedNode.y = y;
+    attachedNode.el.style.left = x + 'px';
+    attachedNode.el.style.top = y + 'px';
+  }
+});
+
+document.addEventListener('contextmenu', (e) => {
+  if (attachedNode && attachedNode.attached) {
+    e.preventDefault();
+    detachNode();
+  }
+});
+
+// Detach node if mouse leaves all nodes for 3s
+let detachTimer = null;
+main.addEventListener('mouseleave', () => {
+  if (detachTimer) clearTimeout(detachTimer);
+  detachTimer = setTimeout(() => {
+    detachNode();
+  }, 3000);
+});
+main.addEventListener('mouseenter', () => {
+  if (detachTimer) clearTimeout(detachTimer);
+});
+
+// Floating animation
+function drawTypeLines() {
+  ctx.clearRect(0, 0, linesCanvas.width, linesCanvas.height);
+  // Draw all lines first
+  for (const type of typeOrder) {
+    const typeNodes = nodes.filter(n => n.type === type);
+    ctx.save();
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash([18, 12]); // 18px dash, 12px gap
+    for (let i = 0; i < typeNodes.length; i++) {
+      for (let j = i + 1; j < typeNodes.length; j++) {
+        const n1 = typeNodes[i];
+        const n2 = typeNodes[j];
+        // Calculate direction vector and offset start/end to node edge
+        const cx1 = n1.x + 55, cy1 = n1.y + 55;
+        const cx2 = n2.x + 55, cy2 = n2.y + 55;
+        const dx = cx2 - cx1;
+        const dy = cy2 - cy1;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > n1.radius + n2.radius + 2) { // Only draw if not overlapping
+          const r1 = n1.radius;
+          const r2 = n2.radius;
+          // Unit direction vector
+          const ux = dx / dist;
+          const uy = dy / dist;
+          // Start and end points offset by radius
+          const x1 = cx1 + ux * r1;
+          const y1 = cy1 + uy * r1;
+          const x2 = cx2 - ux * r2;
+          const y2 = cy2 - uy * r2;
+          // Create a gradient for the dash: color in the middle, transparent at ends, with glow
+          const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+          grad.addColorStop(0, 'rgba(0,0,0,0)');
+          grad.addColorStop(0.15, typeColors[type]);
+          grad.addColorStop(0.5, typeColors[type]);
+          grad.addColorStop(0.85, typeColors[type]);
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          // Make glow more translucent by lowering alpha
+          const glowColor = typeColors[type].replace(/(rgba?\([^,]+,[^,]+,[^,]+),\s*([\d.]+)\)/, '$1,0.18)');
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = 12;
+          ctx.strokeStyle = grad;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+      }
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Mask out node circles so lines are not visible behind them
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  for (const node of nodes) {
+    const cx = node.x + 55;
+    const cy = node.y + 55;
+    ctx.beginPath();
+    ctx.arc(cx, cy, node.radius + 1.5, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function animate() {
+  // Restore previous smoothness settings
+  const substeps = 8;
+  for (let s = 0; s < substeps; s++) {
+    applyRepulsion();
+    for (const node of nodes) {
+      if (!node.attached) {
+        node.x += node.vx / substeps;
+        node.y += node.vy / substeps;
+        // Bounce off main div edges
+        if (node.x < 10 || node.x > window.innerWidth - 420) node.vx *= -1;
+        if (node.y < 8 || node.y > window.innerHeight - 60) node.vy *= -1;
+        node.el.style.left = node.x + 'px';
+        node.el.style.top = node.y + 'px';
+      }
+    }
+  }
+  // Update orbit circles to follow selected node
+  if (selectedNode && selectedNode._orbitCircles) {
+    const node = selectedNode;
+    const nodeCenterX = node.x + node.el.offsetWidth / 2;
+    const nodeCenterY = node.y + node.el.offsetHeight / 2;
+    const orbitRadius = 115;
+    // Calculate target positions for all orbit circles
+    const positions = node._orbitCircles.map(obj => {
+      const angle = obj.angle !== undefined ? obj.angle : 0;
+      return {
+        obj,
+        angle,
+        x: nodeCenterX + Math.cos(angle) * orbitRadius,
+        y: nodeCenterY + Math.sin(angle) * orbitRadius
+      };
+    });
+    // Orbit-orbit collision (as before)
+    const minDist = (node._orbitCircles[0]?.el?.offsetWidth || 80) * 0.98;
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const a = positions[i];
+        const b = positions[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minDist && dist > 0) {
+          const overlap = (minDist - dist) / 2;
+          const ox = (dx / dist) * overlap;
+          const oy = (dy / dist) * overlap;
+          a.x -= ox;
+          a.y -= oy;
+          b.x += ox;
+          b.y += oy;
+        }
+      }
+    }
+    // Orbit-main node collision
+    for (const p of positions) {
+      for (const otherNode of nodes) {
+        // Don't collide with parent node
+        if (otherNode === node) continue;
+        const nodeCenterX2 = otherNode.x + otherNode.el.offsetWidth / 2;
+        const nodeCenterY2 = otherNode.y + otherNode.el.offsetHeight / 2;
+        const nodeRadius = otherNode.radius || (otherNode.el.offsetWidth / 2) || 55;
+        const circleRadius = (p.obj.el?.offsetWidth || 80) / 2;
+        const dx = p.x - nodeCenterX2;
+        const dy = p.y - nodeCenterY2;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist2 = nodeRadius + circleRadius;
+        if (dist < minDist2 && dist > 0) {
+          // Push orbit circle away from node
+          const overlap = (minDist2 - dist);
+          const ox = (dx / dist) * overlap;
+          const oy = (dy / dist) * overlap;
+          p.x += ox;
+          p.y += oy;
+        }
+      }
+    }
+    // Set positions
+    for (const p of positions) {
+      const circle = p.obj.el || p.obj;
+      const circleWidth = circle.offsetWidth || 0;
+      const circleHeight = circle.offsetHeight || 0;
+      circle.style.left = `${p.x - circleWidth / 2}px`;
+      circle.style.top = `${p.y - circleHeight / 2}px`;
+    }
+  }
+  drawTypeLines();
+  requestAnimationFrame(animate);
+}
+animate();
+
+// Sidebar logic
+const sidebar = document.getElementById('sidebar');
+function showSidebar(row, nodeEl) {
+  sidebar.innerHTML = '';
+  categories.forEach(cat => {
+    const catDiv = document.createElement('div');
+    catDiv.className = 'sidebar-category';
+    catDiv.textContent = cat;
+    sidebar.appendChild(catDiv);
+    const valDiv = document.createElement('div');
+    valDiv.className = 'sidebar-value';
+    valDiv.textContent = row[cat] || '';
+    // Custom spacing for Brief Purpose/Description
+    if (cat === 'Brief Purpose/Description') {
+      valDiv.style.marginBottom = '34px';
+    } else {
+      valDiv.style.marginBottom = '4px';
+    }
+    sidebar.appendChild(valDiv);
+  });
+  // Floating UI optional - for advanced positioning!
+  // You could add floating popups here if you want.
+}
+function clearSidebar() {
+  // Optionally: keep previous info, or clear
+  // sidebar.innerHTML = '';
+}
+
+// Populate legend
+const legend = document.getElementById('legend');
+for (const [type, color] of Object.entries(typeColors)) {
+  const span = document.createElement('span');
+  span.innerHTML = `<span class="legend-dot" style="background:${color}"></span>${type}`;
+  legend.appendChild(span);
+}
+
+</script>
+</body>
+</html>

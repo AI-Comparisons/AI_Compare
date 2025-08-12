@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Floating Nodes Visualization</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Floating UI CDN -->
+  <script src="https://unpkg.com/@floating-ui/dom"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #181e26;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+    }
+    #main {
+      flex: 1 1 0;
+      position: relative;
+      overflow: hidden;
+      height: 100vh;
+    }
+    .node {
+      position: absolute;
+      border-radius: 50%;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.1);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 22px;
+      font-weight: bold;
+      font-size: 1.1em;
+      cursor: pointer;
+      transition: box-shadow 0.2s, transform 0.2s;
+      border: 2px solid #fff2;
+      user-select: none;
+      will-change: transform;
+    }
+    .node.selected, .node:hover {
+      z-index: 1;
+      box-shadow: 0 8px 32px 8px #0004;
+      border: 2px solid #fff8;
+      transform: scale(1.10);
+    }
+    #sidebar {
+      width: 370px;
+      background: #232c3a;
+      color: #e6eaf0;
+      height: 100vh;
+      box-shadow: -4px 0 22px #0007;
+      padding: 44px 28px 28px 34px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      overflow-y: auto;
+      position: fixed;
+      right: 0;
+      top: 0;
+      z-index: 1000;
+    }
+    .sidebar-category {
+      margin-top: 2px;
+      font-size: 1.04em;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #ffecb3;
+      margin-bottom: 2px;
+    }
+    .sidebar-value {
+      min-height: 32px;
+      margin-bottom: 34px;
+      font-size: 1.06em;
+      color: #fff;
+      font-weight: 400;
+      word-break: break-word;
+      max-width: 95%;
+    }
+    .sidebar-category:first-child {
+      margin-top: 0;
+    }
+    /* Simple legend */
+    #legend {
+      position: absolute;
+      bottom: 18px;
+      left: 30px;
+      background: #262f43;
+      color: #ffe;
+      padding: 10px 18px 10px 15px;
+      border-radius: 18px;
+      font-size: 0.98em;
+      box-shadow: 0 4px 22px #0005;
+      z-index: 100;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .legend-dot {
+      width: 18px; height: 18px; display: inline-block; border-radius: 50%; margin-right: 8px; vertical-align: middle;
+    }
+    @media (max-width: 1100px) {
+      #sidebar { width: 98vw; left: 0; top: auto; bottom: 0; height: auto; position: fixed; right: unset;}
+      #main { height: calc(100vh - 240px);}
+    }
+  </style>
+</head>
+<body>
+  <div id="main"></div>
+  <div id="sidebar"></div>
+  <div id="legend"></div>
+
+<script>
+/** Data section: Copy-paste your spreadsheet rows here! **/
+const data = [
+  // Each entry is one row from your sheet (headers are not needed in the array)
+  // Example:
+  // { Type: "Closed IDE", Name: "Cursor", Category: "...", ... }
+  // (I've included first few rows; paste more from your data if needed)
+{
+    "Type": "Closed IDE",
+    "Name": "Cursor",
+    "Category": "IDE fork with AI features",
+    "Brief Purpose/Description": "VSCode fork with built-in AI chat, codegen, and Q&A on local codebases. Designed for seamless dev workflows.",
+    "Architecture": "Electron/JS",
+    "Purpose": "AI coding/gen chat",
+    "Price": "Free / Paid",
+    "Local Use": "Yes*",
+    "Open Source": "No",
+    "IDE Integration": "N/A (own IDE)",
+    "Standalone/Install": "Yes (native app)",
+    "Edu Discount": "Yes (students)",
+    "Multi-user": "Yes (students)",
+    "Codebase Exploration": "Yes (chat, search, AI, Q&A)",
+    "Code Assist": "Yes (AI)",
+    "APIs": "No",
+    "Integration Points": "N/A (own IDE)",
+    "Educational Suitability": "Excellent (students, teams)",
+    "correction": "(Local Use Yes) Partially true — Cursor itself requires VSCode, some features are online-only."
+  },
+  {
+    "Type": "Closed IDE",
+    "Name": "Replit",
+    "Category": "Online IDE with AI agents",
+    "Brief Purpose/Description": "Cloud IDE with ghostwriter AI, collaborative coding, and instant project deployment.",
+    "Architecture": "Web SaaS",
+    "Purpose": "AI-assisted online IDE",
+    "Price": "Free / Paid",
+    "Local Use": "No",
+    "Open Source": "No",
+    "IDE Integration": "Yes (inbuilt IDE)",
+    "Standalone/Install": "Web only",
+    "Edu Discount": "Yes",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "Yes (AI autocomplete/Q&A)",
+    "Code Assist": "Yes (AI)",
+    "APIs": "Yes",
+    "Integration Points": "Native + API",
+    "Educational Suitability": "Excellent for learning & collaboration",
+    "correction": "(Multi-User:Yes) This is true for collaborative projects and teams."
+  },
+  {
+    "Type": "Closed IDE",
+    "Name": "Windsurf",
+    "Category": "Web/Hybrid IDE + Code Search",
+    "Brief Purpose/Description": "Intelligent codebase interpreter with support for local/dev use.",
+    "Architecture": "Docker/Node",
+    "Purpose": "AI codebase intelligence",
+    "Price": "Free / Paid",
+    "Local Use": "Yes",
+    "Open Source": "No",
+    "IDE Integration": "Plugin",
+    "Standalone/Install": "Web/hybrid",
+    "Edu Discount": "-",
+    "Multi-user": "-",
+    "Codebase Exploration": "Yes",
+    "Code Assist": "Yes",
+    "APIs": "API Keys",
+    "Integration Points": "Plugin",
+    "Educational Suitability": "Good for hybrid or local use",
+    "correction": "(Local Use Yes) Requires setup for local use — Docker support is required."
+  },
+  {
+    "Type": "Code Assist",
+    "Name": "OpenAI ChatGPT",
+    "Category": "Web Chat + Code Assistant",
+    "Brief Purpose/Description": "Versatile chat interface for code, learning, and Q&A",
+    "Architecture": "Cloud",
+    "Purpose": "Code assistance, Q&A",
+    "Price": "Free / Paid",
+    "Local Use": "No",
+    "Open Source": "No",
+    "IDE Integration": "No",
+    "Standalone/Install": "Web only",
+    "Edu Discount": "-",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "Yes",
+    "Code Assist": "Yes (AI)",
+    "APIs": "Yes",
+    "Integration Points": "Web",
+    "Educational Suitability": "Good general-purpose option",
+    "correction": "(Code Assist: Yes) This is true for ChatGPT Pro and API."
+  },
+   {
+    "Type": "Code Assist",
+    "Name": "GitHub Copilot",
+    "Category": "IDE plugin/assistant",
+    "Brief Purpose/Description": "Cloud-hosted AI autocomplete and inline suggestions",
+    "Architecture": "Cloud, Plugins",
+    "Purpose": "IDE-based code assist",
+    "Price": "Paid (Free for students)",
+    "Local Use": "No",
+    "Open Source": "No",
+    "IDE Integration": "Yes (VSCode, JetBrains)",
+    "Standalone/Install": "Plugin only",
+    "Edu Discount": "Yes",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "Yes (AI Q&A)",
+    "Code Assist": "Yes (AI)",
+    "APIs": "Yes",
+    "Integration Points": "IDE plugins",
+    "Educational Suitability": "Excellent (if policy allows cloud)",
+    "correction": "(Edu Discount Yes) Free only for verified students/teachers."
+  },
+  {
+    "Type": "Code Assist",
+    "Name": "Cline",
+    "Category": "Open-source AI CLI",
+    "Brief Purpose/Description": "Fast local command-line chat with code interpreter and file support.",
+    "Architecture": "Rust, Python",
+    "Purpose": "Local AI chat & code",
+    "Price": "Free",
+    "Local Use": "Yes",
+    "Open Source": "Yes",
+    "IDE Integration": "-",
+    "Standalone/Install": "Yes (native, pip)",
+    "Edu Discount": "-",
+    "Multi-user": "-",
+    "Codebase Exploration": "Partial (file chat)",
+    "Code Assist": "Yes",
+    "APIs": "Yes (local)",
+    "Integration Points": "CLI",
+    "Educational Suitability": "Good for scripting, CLI learners",
+    "correction": ""
+  },
+  {
+    "Type": "Code Assist",
+    "Name": "Blackbox.ai",
+    "Category": "IDE plugin/AI tool",
+    "Brief Purpose/Description": "AI code search, code generation, and code explanation.",
+    "Architecture": "Cloud, Plugin",
+    "Purpose": "Code search/gen/explain",
+    "Price": "Free / Paid",
+    "Local Use": "No",
+    "Open Source": "No",
+    "IDE Integration": "Yes (many IDEs)",
+    "Standalone/Install": "Plugin",
+    "Edu Discount": "Yes",
+    "Multi-user": "-",
+    "Codebase Exploration": "Yes",
+    "Code Assist": "Yes (AI)",
+    "APIs": "Yes",
+    "Integration Points": "IDE plugins",
+    "Educational Suitability": "Good for code learning, plugin",
+    "correction": ""
+  },
+  {
+    "Type": "Code Assist",
+    "Name": "GenieGPT",
+    "Category": "Multi-modal AI",
+    "Brief Purpose/Description": "Chatbot supporting code, text, image, web browsing, PDF & audio transcription.",
+    "Architecture": "Cloud, Plugins",
+    "Purpose": "Multi-modal chat/assist",
+    "Price": "Free / Paid",
+    "Local Use": "No",
+    "Open Source": "No",
+    "IDE Integration": "-",
+    "Standalone/Install": "Web, API",
+    "Edu Discount": "-",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "Yes (upload)",
+    "Code Assist": "Yes (AI)",
+    "APIs": "Yes",
+    "Integration Points": "Web, API",
+    "Educational Suitability": "Good for accessibility, file upload",
+    "correction": ""
+  },
+  {
+    "Type": "Code Assist",
+    "Name": "Amazon Q Developer",
+    "Category": "IDE plugin/assistant",
+    "Brief Purpose/Description": "Code suggestions, codebase Q&A, code transformation and cloud ops.",
+    "Architecture": "Cloud, Plugin",
+    "Purpose": "IDE code assist/ops",
+    "Price": "Paid",
+    "Local Use": "No",
+    "Open Source": "No",
+    "IDE Integration": "Yes (JetBrains, VSCode, CLI)",
+    "Standalone/Install": "Plugin/CLI",
+    "Edu Discount": "-",
+    "Multi-user": "-",
+    "Codebase Exploration": "Yes (Q&A)",
+    "Code Assist": "Yes (AI)",
+    "APIs": "Yes",
+    "Integration Points": "IDE plugins, CLI",
+    "Educational Suitability": "Good for enterprise/large teams",
+    "correction": ""
+  },
+  {
+    "Type": "Code Assist",
+    "Name": "Claude (Anthropic)",
+    "Category": "Web Chat + API",
+    "Brief Purpose/Description": "Large context, safe AI chatbot with strong code/logic capability.",
+    "Architecture": "Cloud",
+    "Purpose": "Chat, code, logic",
+    "Price": "Free / Paid",
+    "Local Use": "No",
+    "Open Source": "No",
+    "IDE Integration": "-",
+    "Standalone/Install": "Web only",
+    "Edu Discount": "-",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "Yes (upload)",
+    "Code Assist": "Yes (AI)",
+    "APIs": "Yes",
+    "Integration Points": "Web, API",
+    "Educational Suitability": "Good for large docs, multi-file",
+    "correction": ""
+  },
+  {
+    "Type": "Code Assist",
+    "Name": "Sourcegraph Cody",
+    "Category": "IDE plugin/assistant",
+    "Brief Purpose/Description": "AI code search, autocomplete and Q&A for codebases.",
+    "Architecture": "Cloud, Plugin",
+    "Purpose": "Code search/assist",
+    "Price": "Free / Paid",
+    "Local Use": "No",
+    "Open Source": "No",
+    "IDE Integration": "Yes (many IDEs)",
+    "Standalone/Install": "Plugin, Web",
+    "Edu Discount": "-",
+    "Multi-user": "-",
+    "Codebase Exploration": "Yes",
+    "Code Assist": "Yes (AI)",
+    "APIs": "Yes",
+    "Integration Points": "IDE plugins, Web",
+    "Educational Suitability": "Great for large codebases",
+    "correction": ""
+  },
+  {
+    "Type": "Code Assist",
+    "Name": "Tabnine",
+    "Category": "IDE plugin",
+    "Brief Purpose/Description": "AI-based code completion, private model option, and IDE plugin.",
+    "Architecture": "Cloud, Local",
+    "Purpose": "Code assist, completions",
+    "Price": "Free / Paid",
+    "Local Use": "Yes",
+    "Open Source": "No",
+    "IDE Integration": "Yes (many IDEs)",
+    "Standalone/Install": "Plugin",
+    "Edu Discount": "Yes",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "-",
+    "Code Assist": "Yes (AI)",
+    "APIs": "-",
+    "Integration Points": "IDE plugins",
+    "Educational Suitability": "Good (can be self-hosted)",
+    "correction": "(Local Use: Yes) Enterprise version allows self-hosted models."
+  },
+  {
+    "Type": "Local LLM UI",
+    "Name": "Pinokio.co",
+    "Category": "App Launcher",
+    "Brief Purpose/Description": "One-click installer and manager for open-source AI/LLM apps.",
+    "Architecture": "Electron/Node",
+    "Purpose": "Launch/host local AI apps",
+    "Price": "Free",
+    "Local Use": "Yes",
+    "Open Source": "Partial",
+    "IDE Integration": "-",
+    "Standalone/Install": "Yes (native app)",
+    "Edu Discount": "-",
+    "Multi-user": "-",
+    "Codebase Exploration": "-",
+    "Code Assist": "-",
+    "APIs": "No",
+    "Integration Points": "Launcher",
+    "Educational Suitability": "Best for workshops, hackathons",
+    "correction": ""
+  },
+  {
+    "Type": "Local LLM API",
+    "Name": "LocalAI",
+    "Category": "Open-source LLM server",
+    "Brief Purpose/Description": "Self-hosted API server for running local LLMs with OpenAI-compatible endpoints.",
+    "Architecture": "Go, Docker",
+    "Purpose": "Self-host LLM API",
+    "Price": "Free",
+    "Local Use": "Yes",
+    "Open Source": "Yes",
+    "IDE Integration": "-",
+    "Standalone/Install": "Yes (Docker, Binary)",
+    "Edu Discount": "-",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "-",
+    "Code Assist": "Yes",
+    "APIs": "Yes (OpenAI compatible)",
+    "Integration Points": "API",
+    "Educational Suitability": "Great for school/private LLMs",
+    "correction": ""
+  },
+  {
+    "Type": "Local LLM UI",
+    "Name": "Ollama",
+    "Category": "Local LLM runner",
+    "Brief Purpose/Description": "Easy-to-use CLI and server for running local LLMs (Mac, Win, Linux).",
+    "Architecture": "Go",
+    "Purpose": "Run local LLMs",
+    "Price": "Free",
+    "Local Use": "Yes",
+    "Open Source": "Partial",
+    "IDE Integration": "-",
+    "Standalone/Install": "Yes (native app)",
+    "Edu Discount": "-",
+    "Multi-user": "-",
+    "Codebase Exploration": "-",
+    "Code Assist": "Yes",
+    "APIs": "Yes (local)",
+    "Integration Points": "CLI, API",
+    "Educational Suitability": "Good for teaching, personal LLMs",
+    "correction": ""
+  },
+  {
+    "Type": "Local LLM UI",
+    "Name": "OpenWebUI",
+    "Category": "Web UI",
+    "Brief Purpose/Description": "Web user interface for Ollama, LM Studio, and OpenAI-compatible LLMs.",
+    "Architecture": "Node, Docker",
+    "Purpose": "Web UI for LLMs",
+    "Price": "Free",
+    "Local Use": "Yes",
+    "Open Source": "Yes",
+    "IDE Integration": "-",
+    "Standalone/Install": "Yes (Docker, Node)",
+    "Edu Discount": "-",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "-",
+    "Code Assist": "Yes",
+    "APIs": "Yes (local)",
+    "Integration Points": "API",
+    "Educational Suitability": "Great for student labs, workshops",
+    "correction": ""
+  },
+  {
+    "Type": "Local LLM UI",
+    "Name": "app.big0agi.com",
+    "Category": "Open-source web UI",
+    "Brief Purpose/Description": "Full-featured open-source web UI for OpenAI-compatible LLMs and agents.",
+    "Architecture": "Node, Docker",
+    "Purpose": "Web UI for LLMs/agents",
+    "Price": "Free",
+    "Local Use": "Yes",
+    "Open Source": "Yes",
+    "IDE Integration": "-",
+    "Standalone/Install": "Yes (Docker, Node)",
+    "Edu Discount": "-",
+    "Multi-user": "Yes",
+    "Codebase Exploration": "-",
+    "Code Assist": "Yes",
+    "APIs": "Yes (local)",
+    "Integration Points": "API",
+    "Educational Suitability": "Excellent for advanced labs",
+    "correction": ""
+  }
+];
+
+// Generate unique types and their colors
+const typeColors = {};
+const palette = [
+  "#60a5fa", // blue
+  "#38bdf8", // sky
+  "#818cf8", // indigo
+  "#f472b6", // pink
+  "#facc15", // yellow
+  "#a3e635", // lime
+  "#f87171", // red
+  "#34d399", // emerald
+  "#fb7185", // rose
+  "#eab308", // amber
+  "#7dd3fc", // cyan
+  "#c084fc", // purple
+  "#4ade80", // green
+  "#fbbf24", // orange
+  "#f9a8d4", // magenta
+  "#f59e42", // vivid orange
+  "#7c3aed", // deep violet
+  "#14b8a6", // teal
+  "#f43f5e", // hot pink
+  "#84cc16", // bright green
+  "#e11d48", // crimson
+  "#6366f1", // periwinkle
+  "#fcd34d", // gold
+  "#0ea5e9", // azure
+  "#f472b6", // light pink
+  "#a21caf", // purple dark
+  "#fde68a", // pale yellow
+  "#fca5a5", // light red
+  "#bef264", // light lime
+  "#f87171", // coral
+];
+let i = 0;
+for (const row of data) {
+  const type = row.Type || "Other";
+  if (!(type in typeColors)) {
+    typeColors[type] = palette[i++ % palette.length];
+  }
+}
+
+// Get all category names (headers) from the first row keys
+const categories = Object.keys(data[0]);
+
+// Floating node positions/speeds
+const nodes = [];
+const main = document.getElementById('main');
+
+// Make nodes for each data item
+data.forEach((row, idx) => {
+  const div = document.createElement('div');
+  div.className = 'node';
+  div.textContent = row.Name;
+  div.style.background = typeColors[row.Type];
+  // Add a colored border for Type as well
+  div.style.borderColor = typeColors[row.Type] || '#fff2';
+  // Random position
+  const x = Math.random() * (window.innerWidth - 550);
+  const y = Math.random() * (window.innerHeight - 80);
+  div.style.left = `${x}px`;
+  div.style.top = `${y}px`;
+  main.appendChild(div);
+  // Save position and velocity for animation
+  nodes.push({
+    el: div,
+    x, y,
+    vx: (Math.random()-0.5) * 0.6 - 0.05,
+    vy: (Math.random()-0.5) * 0.6 - 0.05,
+    idx,
+    attached: false,
+    hoverTimer: null,
+    lastHover: 0
+  });
+});
+
+// Node interaction logic
+let attachedNode = null;
+let hoverNode = null;
+let hoverStartTime = 0;
+
+function setNodeOpacities(activeIdx) {
+  nodes.forEach((node, idx) => {
+    if (attachedNode && node === attachedNode) {
+      node.el.style.opacity = '1';
+    } else if (activeIdx !== null && idx !== activeIdx) {
+      node.el.style.opacity = '0.5';
+    } else {
+      node.el.style.opacity = '1';
+    }
+  });
+}
+
+function attachNode(node, event) {
+  if (attachedNode && attachedNode !== node) {
+    // Detach previous node
+    attachedNode.attached = false;
+    attachedNode.vx = (Math.random()-0.5) * 0.6 - 0.05;
+    attachedNode.vy = (Math.random()-0.5) * 0.6 - 0.05;
+    attachedNode.el.style.zIndex = '';
+  }
+  attachedNode = node;
+  node.attached = true;
+  node.el.style.zIndex = 999;
+  setNodeOpacities(node.idx);
+}
+
+function detachNode() {
+  if (attachedNode) {
+    attachedNode.attached = false;
+    attachedNode.vx = (Math.random()-0.5) * 0.6 - 0.05;
+    attachedNode.vy = (Math.random()-0.5) * 0.6 - 0.05;
+    attachedNode.el.style.zIndex = '';
+    attachedNode = null;
+    setNodeOpacities(null);
+  }
+}
+
+// Mouse event listeners for each node
+nodes.forEach((node, idx) => {
+  node.el.addEventListener('mouseenter', (e) => {
+    hoverNode = node;
+    hoverStartTime = Date.now();
+    node.el.classList.add('selected');
+    showSidebar(data[idx], node.el);
+    // Start timer for 3s hover
+    if (node.hoverTimer) clearTimeout(node.hoverTimer);
+    node.hoverTimer = setTimeout(() => {
+      if (hoverNode === node) {
+        attachNode(node, e);
+      }
+    }, 3000);
+    setNodeOpacities(attachedNode ? attachedNode.idx : null);
+  });
+  node.el.addEventListener('mouseleave', () => {
+    hoverNode = null;
+    hoverStartTime = 0;
+    node.el.classList.remove('selected');
+    clearSidebar();
+    if (node.hoverTimer) clearTimeout(node.hoverTimer);
+  });
+});
+
+// Mouse move handler for attached node
+document.addEventListener('mousemove', (e) => {
+  if (attachedNode && attachedNode.attached) {
+    // Keep node centered on mouse, but within main area
+    const nodeRect = attachedNode.el.getBoundingClientRect();
+    let x = e.clientX - nodeRect.width/2;
+    let y = e.clientY - nodeRect.height/2;
+    // Clamp to main area
+    x = Math.max(10, Math.min(x, window.innerWidth - 420 - nodeRect.width));
+    y = Math.max(8, Math.min(y, window.innerHeight - 60 - nodeRect.height));
+    attachedNode.x = x;
+    attachedNode.y = y;
+    attachedNode.el.style.left = x + 'px';
+    attachedNode.el.style.top = y + 'px';
+  }
+});
+
+document.addEventListener('contextmenu', (e) => {
+  if (attachedNode && attachedNode.attached) {
+    e.preventDefault();
+    detachNode();
+  }
+});
+
+// Detach node if mouse leaves all nodes for 3s
+let detachTimer = null;
+main.addEventListener('mouseleave', () => {
+  if (detachTimer) clearTimeout(detachTimer);
+  detachTimer = setTimeout(() => {
+    detachNode();
+  }, 3000);
+});
+main.addEventListener('mouseenter', () => {
+  if (detachTimer) clearTimeout(detachTimer);
+});
+
+// Floating animation
+function animate() {
+  for (const node of nodes) {
+    if (!node.attached) {
+      node.x += node.vx;
+      node.y += node.vy;
+      // Bounce off main div edges
+      if (node.x < 10 || node.x > window.innerWidth - 420) node.vx *= -1;
+      if (node.y < 8 || node.y > window.innerHeight - 60) node.vy *= -1;
+      node.el.style.left = node.x + 'px';
+      node.el.style.top = node.y + 'px';
+    }
+  }
+  requestAnimationFrame(animate);
+}
+animate();
+
+// Sidebar logic
+const sidebar = document.getElementById('sidebar');
+function showSidebar(row, nodeEl) {
+  sidebar.innerHTML = '';
+  categories.forEach(cat => {
+    const catDiv = document.createElement('div');
+    catDiv.className = 'sidebar-category';
+    catDiv.textContent = cat;
+    sidebar.appendChild(catDiv);
+    const valDiv = document.createElement('div');
+    valDiv.className = 'sidebar-value';
+    valDiv.textContent = row[cat] || '';
+    sidebar.appendChild(valDiv);
+  });
+  // Floating UI optional - for advanced positioning!
+  // You could add floating popups here if you want.
+}
+function clearSidebar() {
+  // Optionally: keep previous info, or clear
+  // sidebar.innerHTML = '';
+}
+
+// Populate legend
+const legend = document.getElementById('legend');
+for (const [type, color] of Object.entries(typeColors)) {
+  const span = document.createElement('span');
+  span.innerHTML = `<span class="legend-dot" style="background:${color}"></span>${type}`;
+  legend.appendChild(span);
+}
+
+</script>
+</body>
+</html>
