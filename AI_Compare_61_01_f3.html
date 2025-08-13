@@ -558,7 +558,7 @@ function initializeApp() {
           let crossesBoundary = false;
           let pushX = 0, pushY = 0;
           let minDist = Infinity;
-          const segments = boundarySegmentsByType[otherType] || [];
+          const segments = window.boundarySegmentsByType[otherType] || [];
           for (const seg of segments) {
             const a = seg[0];
             const b = seg[1];
@@ -1054,23 +1054,7 @@ function addOrbitArcs(node) {
   // ...existing code...
   // ...existing code...
 
-  // Add a visible green dot at the node center for debugging (positioned using node.x/y)
-  const greenDot = document.createElement('div');
-  greenDot.style.position = 'absolute';
-  greenDot.style.width = '18px';
-  greenDot.style.height = '18px';
-  greenDot.style.background = '#00ff33';
-  greenDot.style.border = '2px solid #fff';
-  greenDot.style.borderRadius = '50%';
-  greenDot.style.left = `${node.x + node.el.offsetWidth/2}px`;
-  greenDot.style.top = `${node.y + node.el.offsetHeight/2}px`;
-  greenDot.style.transform = 'translate(-50%, -50%)';
-  greenDot.style.zIndex = '10001';
-  greenDot.style.boxShadow = '0 0 8px 3px #00ff3388, 0 0 0 2px #fff';
-  greenDot.className = 'orbit-center-dot';
-  main.appendChild(greenDot);
-  if (!node._orbitArcDebugDots) node._orbitArcDebugDots = [];
-  node._orbitArcDebugDots.push(greenDot);
+  // Removed green dot at node center for arcs debug
   if (node._orbitArcs) {
     for (const obj of node._orbitArcs) {
       const arc = obj.el || obj;
@@ -1156,7 +1140,7 @@ function addOrbitArcs(node) {
   svg.style.zIndex = '10'; // ensure below node divs but above canvas
   svg.style.pointerEvents = 'none'; // allow mouse events to pass through
   svg.style.display = 'block';
-  svg.style.background = 'rgba(255,0,0,0.05)'; // TEMP: debug background, remove after test
+  // svg.style.background = 'rgba(255,0,0,0.05)'; // Removed debug background
   for (let i = 0; i < 7; i++) {
     const startAngle = arcAngles[i];
     const span = arcSpans[i];
@@ -1477,8 +1461,8 @@ document.addEventListener('mousemove', (e) => {
       return Math.hypot(cx - closestX, cy - closestY) < r - 0.5;
     }
     for (const otherType of typeOrder) {
-      if (otherType === selectedNode.type) continue;
-      const segments = boundarySegmentsByType[otherType] || [];
+  if (otherType === selectedNode.type) continue;
+  const segments = window.boundarySegmentsByType[otherType] || [];
       for (const seg of segments) {
         const a = seg[0];
         const b = seg[1];
@@ -1571,7 +1555,7 @@ document.addEventListener('mousemove', (e) => {
     }
     for (const otherType of typeOrder) {
       if (otherType === attachedNode.type) continue;
-      const segments = boundarySegmentsByType[otherType] || [];
+  const segments = window.boundarySegmentsByType[otherType] || [];
       for (const seg of segments) {
         const a = seg[0];
         const b = seg[1];

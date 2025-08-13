@@ -247,6 +247,55 @@
 </div>
 
 <script>
+// --- Utility/Helper Functions ---
+function circleIntersectsSegment(cx, cy, r, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const segLenSq = dx * dx + dy * dy;
+  if (segLenSq === 0) return Math.hypot(cx - ax, cy - ay) < r;
+  let t = ((cx - ax) * dx + (cy - ay) * dy) / segLenSq;
+  t = Math.max(0, Math.min(1, t));
+  const closestX = ax + t * dx;
+  const closestY = ay + t * dy;
+  return Math.hypot(cx - closestX, cy - closestY) < r - 0.5;
+}
+
+function getConvexHull(points) {
+  points = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+  const cross = (o, a, b) => (a.x - o.x)*(b.y - o.y) - (a.y - o.y)*(b.x - o.x);
+  const lower = [];
+  for (const p of points) {
+    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i = points.length-1; i >= 0; i--) {
+    const p = points[i];
+    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop();
+  lower.pop();
+  return lower.concat(upper);
+}
+
+function pointInConvexHull(px, py, hull) {
+  let inside = true;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i];
+    const b = hull[(i+1)%hull.length];
+    const nx = b.y - a.y;
+    const ny = a.x - b.x;
+    const vx = px - a.x;
+    const vy = py - a.y;
+    if (nx * vx + ny * vy < 0) {
+      inside = false;
+      break;
+    }
+  }
+  return inside;
+}
+
 let data = [];
 // --- GLOBALS for node attachment/detachment ---
 window.attachedNode = null;
@@ -303,6 +352,7 @@ function toggleOrbitArcs(node) {
 }
 
 // Wrap all main logic in a function to call after data is loaded
+// Main app initialization. Sets up DOM, nodes, events, legend, and starts animation. Called after Excel loads.
 function initializeApp() {
   // Clear previous nodes, legend, sidebar
   document.getElementById('main').innerHTML = '';
@@ -533,22 +583,7 @@ function initializeApp() {
           }
         }
         // --- Push foreign nodes out of convex hulls and boundaries ---
-        function pointInConvexHull(px, py, hull) {
-          let inside = true;
-          for (let i = 0; i < hull.length; i++) {
-            const a = hull[i];
-            const b = hull[(i+1)%hull.length];
-            const nx = b.y - a.y;
-            const ny = a.x - b.x;
-            const vx = px - a.x;
-            const vy = py - a.y;
-            if (nx * vx + ny * vy < 0) {
-              inside = false;
-              break;
-            }
-          }
-          return inside;
-        }
+  // pointInConvexHull moved to top-level helpers
         for (const otherType of typeOrder) {
           if (otherType === node.type) continue;
           const typeNodes = nodes.filter(n => n.type === otherType);
@@ -558,7 +593,7 @@ function initializeApp() {
           let crossesBoundary = false;
           let pushX = 0, pushY = 0;
           let minDist = Infinity;
-          const segments = boundarySegmentsByType[otherType] || [];
+          const segments = window.boundarySegmentsByType[otherType] || [];
           for (const seg of segments) {
             const a = seg[0];
             const b = seg[1];
@@ -660,24 +695,7 @@ function initializeApp() {
   function drawTypeLines() {
     ctx.clearRect(0, 0, linesCanvas.width, linesCanvas.height);
     window.boundarySegmentsByType = {};
-    function getConvexHull(points) {
-      points = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
-      const cross = (o, a, b) => (a.x - o.x)*(b.y - o.y) - (a.y - o.y)*(b.x - o.x);
-      const lower = [];
-      for (const p of points) {
-        while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
-        lower.push(p);
-      }
-      const upper = [];
-      for (let i = points.length-1; i >= 0; i--) {
-        const p = points[i];
-        while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
-        upper.push(p);
-      }
-      upper.pop();
-      lower.pop();
-      return lower.concat(upper);
-    }
+  // getConvexHull moved to top-level helpers
     const typeOrder = Object.keys(window.typeColors);
     for (const type of typeOrder) {
       const typeNodes = nodes.filter(n => n.type === type);
@@ -1052,25 +1070,85 @@ function addOrbitArcs(node) {
     console.debug('[addOrbitArcs] SVG count:', svgElems.length, svgElems);
   }, 0);
   // ...existing code...
+  bindEventListeners();
+// Modular event binding for all node and global interactions
+function bindEventListeners() {
+  // Dragging
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  window.selectedNode = null;
+  nodes.forEach((node) => {
+    node.el.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        isDragging = true;
+        const rect = node.el.getBoundingClientRect();
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+        e.preventDefault();
+        node.el.style.zIndex = 100;
+        node.el.classList.add('selected');
+        window.selectedNode = node;
+      }
+    });
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (isDragging && window.selectedNode) {
+      let x = e.clientX - dragOffsetX;
+      let y = e.clientY - dragOffsetY;
+      x = Math.max(10, Math.min(x, window.innerWidth - 420 - window.selectedNode.el.offsetWidth));
+      y = Math.max(8, Math.min(y, window.innerHeight - 60 - window.selectedNode.el.offsetHeight));
+      window.selectedNode.x = x;
+      window.selectedNode.y = y;
+      window.selectedNode.el.style.left = x + 'px';
+      window.selectedNode.el.style.top = y + 'px';
+      window.selectedNode.vx = 0;
+      window.selectedNode.vy = 0;
+    }
+  });
+  document.addEventListener('mouseup', (e) => {
+    if (isDragging && window.selectedNode) {
+      isDragging = false;
+      window.selectedNode.el.style.zIndex = '';
+      window.selectedNode.el.classList.remove('selected');
+      window.selectedNode = null;
+    }
+  });
+  // Hover/Sidebar
+  nodes.forEach((node) => {
+    node.el.addEventListener('mouseenter', (e) => {
+      window.hoverNode = node;
+      window.hoverStartTime = Date.now();
+      node.el.classList.add('hovering');
+      const dataIdx = parseInt(node.el.dataset.dataIdx, 10);
+      showSidebar(data[dataIdx], node.el);
+    });
+    node.el.addEventListener('mouseleave', () => {
+      window.hoverNode = null;
+      window.hoverStartTime = 0;
+      node.el.classList.remove('hovering');
+      clearSidebar();
+    });
+  });
+  // Orbit arcs (example: double-click to toggle)
+  nodes.forEach((node) => {
+    node.el.addEventListener('dblclick', (e) => {
+      nodes.forEach(n => { if (n !== node) removeOrbitArcs(n); });
+      toggleOrbitArcs(node);
+    });
+  });
+  // Window resize
+  function resizeCanvas() {
+    const canvas = document.getElementById('lines-canvas');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+}
   // ...existing code...
 
-  // Add a visible green dot at the node center for debugging (positioned using node.x/y)
-  const greenDot = document.createElement('div');
-  greenDot.style.position = 'absolute';
-  greenDot.style.width = '18px';
-  greenDot.style.height = '18px';
-  greenDot.style.background = '#00ff33';
-  greenDot.style.border = '2px solid #fff';
-  greenDot.style.borderRadius = '50%';
-  greenDot.style.left = `${node.x + node.el.offsetWidth/2}px`;
-  greenDot.style.top = `${node.y + node.el.offsetHeight/2}px`;
-  greenDot.style.transform = 'translate(-50%, -50%)';
-  greenDot.style.zIndex = '10001';
-  greenDot.style.boxShadow = '0 0 8px 3px #00ff3388, 0 0 0 2px #fff';
-  greenDot.className = 'orbit-center-dot';
-  main.appendChild(greenDot);
-  if (!node._orbitArcDebugDots) node._orbitArcDebugDots = [];
-  node._orbitArcDebugDots.push(greenDot);
+  // Removed green dot at node center for arcs debug
   if (node._orbitArcs) {
     for (const obj of node._orbitArcs) {
       const arc = obj.el || obj;
@@ -1156,7 +1234,7 @@ function addOrbitArcs(node) {
   svg.style.zIndex = '10'; // ensure below node divs but above canvas
   svg.style.pointerEvents = 'none'; // allow mouse events to pass through
   svg.style.display = 'block';
-  svg.style.background = 'rgba(255,0,0,0.05)'; // TEMP: debug background, remove after test
+  // svg.style.background = 'rgba(255,0,0,0.05)'; // Removed debug background
   for (let i = 0; i < 7; i++) {
     const startAngle = arcAngles[i];
     const span = arcSpans[i];
@@ -1465,20 +1543,9 @@ document.addEventListener('mousemove', (e) => {
     y = Math.max(8, Math.min(y, window.innerHeight - 60 - selectedNode.el.offsetHeight));
     // Prevent boundary crossing
     let blocked = false;
-    function circleIntersectsSegment(cx, cy, r, ax, ay, bx, by) {
-      const dx = bx - ax;
-      const dy = by - ay;
-      const segLenSq = dx * dx + dy * dy;
-      if (segLenSq === 0) return Math.hypot(cx - ax, cy - ay) < r;
-      let t = ((cx - ax) * dx + (cy - ay) * dy) / segLenSq;
-      t = Math.max(0, Math.min(1, t));
-      const closestX = ax + t * dx;
-      const closestY = ay + t * dy;
-      return Math.hypot(cx - closestX, cy - closestY) < r - 0.5;
-    }
     for (const otherType of typeOrder) {
       if (otherType === selectedNode.type) continue;
-      const segments = boundarySegmentsByType[otherType] || [];
+      const segments = window.boundarySegmentsByType[otherType] || [];
       for (const seg of segments) {
         const a = seg[0];
         const b = seg[1];
@@ -1558,20 +1625,9 @@ document.addEventListener('mousemove', (e) => {
     y = Math.max(8, Math.min(y, window.innerHeight - 60 - nodeRect.height));
     // Prevent boundary crossing
     let blocked = false;
-    function circleIntersectsSegment(cx, cy, r, ax, ay, bx, by) {
-      const dx = bx - ax;
-      const dy = by - ay;
-      const segLenSq = dx * dx + dy * dy;
-      if (segLenSq === 0) return Math.hypot(cx - ax, cy - ay) < r;
-      let t = ((cx - ax) * dx + (cy - ay) * dy) / segLenSq;
-      t = Math.max(0, Math.min(1, t));
-      const closestX = ax + t * dx;
-      const closestY = ay + t * dy;
-      return Math.hypot(cx - closestX, cy - closestY) < r - 0.5;
-    }
     for (const otherType of typeOrder) {
       if (otherType === attachedNode.type) continue;
-      const segments = boundarySegmentsByType[otherType] || [];
+      const segments = window.boundarySegmentsByType[otherType] || [];
       for (const seg of segments) {
         const a = seg[0];
         const b = seg[1];
@@ -1737,6 +1793,7 @@ function drawTypeLines() {
         }
       }
     }
+    const cx = node.x + 55;
     const cy = node.y + 55;
     ctx.beginPath();
     ctx.arc(cx, cy, node.radius + 1.5, 0, 2 * Math.PI);
