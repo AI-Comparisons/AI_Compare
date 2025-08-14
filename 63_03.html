@@ -306,9 +306,7 @@ function handleExcelFile(e) {
   reader.readAsArrayBuffer(file);
 }
 
-//Process data from excel file
 document.getElementById('excelFileInput').addEventListener('change', handleExcelFile);
-
 // --- Utility/Helper Functions ---
 function circleIntersectsSegment(cx, cy, r, ax, ay, bx, by) {
   const dx = bx - ax;
@@ -405,8 +403,7 @@ function initializeApp() {
   const typeToNodes = {};
   typeOrder.forEach(type => typeToNodes[type] = []);
   data.forEach((row, idx) => {
-    const type = row.Type || "Other";
-    typeToNodes[type].push({row, idx});
+    typeToNodes[row.Type].push({row, idx});
   });
   let nodeIdx = 0;
   const clusterRadius = 180;
@@ -429,14 +426,14 @@ function initializeApp() {
       // Prepare node label content
       const nodeName = item.row.Name ? item.row.Name.split(/\s+/).join('<br>') : '';
       const nodeType = item.row.Type || '';
-      const weblink = (item.row["Web Link"] || '').trim();
       let nodeCategory = '';
       for (const cat of Object.keys(item.row)) {
-        if (cat !== 'Name' && cat !== 'Type' && cat !== 'Web Link' && item.row[cat] && String(item.row[cat]).trim() !== '') {
+        if (cat !== 'Name' && cat !== 'Type' && item.row[cat]) {
           nodeCategory = item.row[cat];
           break;
         }
       }
+      // Set node inner HTML
       nodeDiv.innerHTML = `
         <div style='display:flex;flex-direction:column;align-items:center;width:100%;height:100%;justify-content:center;'>
           <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${nodeType}</span>
@@ -1844,11 +1841,7 @@ function drawTypeLines() {
 const sidebar = document.getElementById('sidebar');
 function showSidebar(row, nodeEl) {
   sidebar.innerHTML = '';
-  // Show all non-empty fields except Name, Type, Web Link
-  for (const cat of categories) {
-    if (cat === 'Name' || cat === 'Type' || cat === 'Web Link') continue;
-    const val = row[cat];
-    if (val === undefined || val === null || String(val).trim() === '') continue;
+  categories.forEach(cat => {
     const rowDiv = document.createElement('div');
     rowDiv.className = 'sidebar-row';
     const keySpan = document.createElement('span');
@@ -1856,7 +1849,7 @@ function showSidebar(row, nodeEl) {
     keySpan.textContent = cat;
     const valSpan = document.createElement('span');
     valSpan.className = 'sidebar-val';
-    valSpan.textContent = val;
+    valSpan.textContent = row[cat] || '';
     rowDiv.appendChild(keySpan);
     rowDiv.appendChild(valSpan);
     // Keep extra spacing for long description rows
@@ -1864,30 +1857,9 @@ function showSidebar(row, nodeEl) {
       rowDiv.style.marginBottom = '34px';
     }
     sidebar.appendChild(rowDiv);
-  }
-  // Add Web Link at the end if present and non-empty
-  const weblink = (row["Web Link"] || '').trim();
-  if (weblink) {
-    const rowDiv = document.createElement('div');
-    rowDiv.className = 'sidebar-row';
-    const keySpan = document.createElement('span');
-    keySpan.className = 'sidebar-key';
-    keySpan.textContent = 'Web Link';
-    const valSpan = document.createElement('span');
-    valSpan.className = 'sidebar-val';
-    const a = document.createElement('a');
-    a.href = weblink;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.textContent = weblink;
-    a.style.color = '#ffe066';
-    a.style.textDecoration = 'underline';
-    valSpan.appendChild(a);
-    rowDiv.appendChild(keySpan);
-    rowDiv.appendChild(valSpan);
-    sidebar.appendChild(rowDiv);
-  }
-  // Do not show any content after the weblink
+  });
+  // Floating UI optional - for advanced positioning!
+  // You could add floating popups here if you want.
 }
 function clearSidebar() {
   // Optionally: keep previous info, or clear
