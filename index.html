@@ -1440,55 +1440,90 @@ function bindEventListeners() {
         }
         return result;
       }
-      let lines = wrapIntoLines(arcContent, maxLines);
-  // For arc 3, use reversed arc path (sweep-flag=0)
-  // For other arcs, use normal direction (sweep-flag=1)
-  // For arcs 0 (Purpose), 1 (Install), and 5 (Price), reverse line order for correct display
-  if ((arcIdx === 0 || arcIdx === 1 || arcIdx === 5) && lines.length > 1) lines = lines.reverse();
+      // Split by line breaks, then word-wrap each line, flatten, and trim to maxLines
+      let lines = [];
+      (arcContent + '').split(/\r?\n/).filter(Boolean).forEach(line => {
+        lines.push(...wrapIntoLines(line, maxLines));
+      });
+      lines = lines.slice(0, maxLines);
+      while (lines.length < maxLines) lines.push('');
       const contentGroup = document.createElementNS(svgNS, 'g');
       contentGroup.setAttribute('data-arc', `arc${arcIdx}-content-text`);
-      const yShift = -1.25 * lineHeight;
-      contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
-      for (let j = 0; j < lines.length; j++) {
-        const textLine = lines[j];
-        if (!textLine) continue;
-        const rText = rBase + ((j - (lines.length - 1) / 2) * lineHeight);
-        let x1t, y1t, x2t, y2t, arcId, pathD;
-        if (arcIdx === 3) {
-          // Arc 3: reversed direction
-          x1t = (svgWidth/2) + rText * Math.cos((240-90)*Math.PI/180);
-          y1t = (svgWidth/2) + rText * Math.sin((240-90)*Math.PI/180);
-          x2t = (svgWidth/2) + rText * Math.cos((120-90)*Math.PI/180);
-          y2t = (svgWidth/2) + rText * Math.sin((120-90)*Math.PI/180);
-          arcId = `arc3-content-${Math.random().toString(36).slice(2)}`;
-          pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 0 0 ${x2t} ${y2t}`;
-        } else {
-          x1t = (svgWidth/2) + rText * Math.cos((arcStart-90)*Math.PI/180);
-          y1t = (svgWidth/2) + rText * Math.sin((arcStart-90)*Math.PI/180);
-          x2t = (svgWidth/2) + rText * Math.cos((arcEnd-90)*Math.PI/180);
-          y2t = (svgWidth/2) + rText * Math.sin((arcEnd-90)*Math.PI/180);
-          arcId = `arc${arcIdx}-content-${Math.random().toString(36).slice(2)}`;
-          pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 ${spanDeg>180?1:0} 1 ${x2t} ${y2t}`;
+  // Remove yShift for all arcs so concentric circles are truly centered
+      // Move arc 3 text arcs up by half a line height, others unchanged
+      if (arcIdx === 3) {
+        // Move arc 3 text arcs up in y by half a line height (negative value moves up in SVG)
+        contentGroup.setAttribute('transform', `translate(0, ${-1.5 * lineHeight})`);
+      } else {
+        contentGroup.setAttribute('transform', `translate(0, 0)`);
+      }
+      // For arcs 0,1,2,4,5,6: evenly space 4 text lines between outer and inner edge, each on its own arc path
+      let numLines = 4;
+      if (arcIdx === 3) {
+        // Arc 3: keep original logic
+        for (let j = 0; j < lines.length; j++) {
+          const textLine = lines[j];
+          if (!textLine) continue;
+          const rText = rBase + ((j - (lines.length - 1) / 2) * lineHeight);
+          let x1t = (svgWidth/2) + rText * Math.cos((240-90)*Math.PI/180);
+          let y1t = (svgWidth/2) + rText * Math.sin((240-90)*Math.PI/180);
+          let x2t = (svgWidth/2) + rText * Math.cos((120-90)*Math.PI/180);
+          let y2t = (svgWidth/2) + rText * Math.sin((120-90)*Math.PI/180);
+          let arcId = `arc3-content-${Math.random().toString(36).slice(2)}`;
+          let pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 0 0 ${x2t} ${y2t}`;
+          const pathEl = document.createElementNS(svgNS, 'path');
+          pathEl.setAttribute('id', arcId);
+          pathEl.setAttribute('d', pathD);
+          pathEl.setAttribute('fill', 'none');
+          contentGroup.appendChild(pathEl);
+          const textEl = document.createElementNS(svgNS, 'text');
+          textEl.setAttribute('fill', '#fff');
+          textEl.setAttribute('font-size', `${fontSizePx}px`);
+          textEl.setAttribute('font-weight', '600');
+          textEl.setAttribute('text-anchor', 'middle');
+          textEl.setAttribute('dominant-baseline', 'middle');
+          textEl.setAttribute('pointer-events', 'none');
+          textEl.setAttribute('style', 'letter-spacing:0.3px; filter: drop-shadow(0 1px 4px #000a);');
+          const textPathEl = document.createElementNS(svgNS, 'textPath');
+          textPathEl.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${arcId}`);
+          textPathEl.setAttribute('startOffset', '50%');
+          textPathEl.textContent = textLine;
+          textEl.appendChild(textPathEl);
+          contentGroup.appendChild(textEl);
         }
-        const pathEl = document.createElementNS(svgNS, 'path');
-        pathEl.setAttribute('id', arcId);
-        pathEl.setAttribute('d', pathD);
-        pathEl.setAttribute('fill', 'none');
-        contentGroup.appendChild(pathEl);
-        const textEl = document.createElementNS(svgNS, 'text');
-        textEl.setAttribute('fill', '#fff');
-        textEl.setAttribute('font-size', `${fontSizePx}px`);
-        textEl.setAttribute('font-weight', '600');
-        textEl.setAttribute('text-anchor', 'middle');
-        textEl.setAttribute('dominant-baseline', 'middle');
-        textEl.setAttribute('pointer-events', 'none');
-        textEl.setAttribute('style', 'letter-spacing:0.3px; filter: drop-shadow(0 1px 4px #000a);');
-        const textPathEl = document.createElementNS(svgNS, 'textPath');
-        textPathEl.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${arcId}`);
-        textPathEl.setAttribute('startOffset', '50%');
-        textPathEl.textContent = textLine;
-        textEl.appendChild(textPathEl);
-        contentGroup.appendChild(textEl);
+      } else {
+        // For arcs 0,1,2,4,5,6: use concentric radii like arc 3
+        for (let j = 0; j < numLines; j++) {
+          const textLine = lines[j] || '';
+          if (!textLine) continue;
+          // Use same concentric radius calculation as arc 3
+          const rText = rBase + ((j - (lines.length - 1) / 2) * lineHeight);
+          let x1t = (svgWidth/2) + rText * Math.cos((arcStart-90)*Math.PI/180);
+          let y1t = (svgWidth/2) + rText * Math.sin((arcStart-90)*Math.PI/180);
+          let x2t = (svgWidth/2) + rText * Math.cos((arcEnd-90)*Math.PI/180);
+          let y2t = (svgWidth/2) + rText * Math.sin((arcEnd-90)*Math.PI/180);
+          let arcId = `arc${arcIdx}-content-${Math.random().toString(36).slice(2)}`;
+          let pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 ${spanDeg>180?1:0} 1 ${x2t} ${y2t}`;
+          const pathEl = document.createElementNS(svgNS, 'path');
+          pathEl.setAttribute('id', arcId);
+          pathEl.setAttribute('d', pathD);
+          pathEl.setAttribute('fill', 'none');
+          contentGroup.appendChild(pathEl);
+          const textEl = document.createElementNS(svgNS, 'text');
+          textEl.setAttribute('fill', '#fff');
+          textEl.setAttribute('font-size', `${fontSizePx}px`);
+          textEl.setAttribute('font-weight', '600');
+          textEl.setAttribute('text-anchor', 'middle');
+          textEl.setAttribute('dominant-baseline', 'middle');
+          textEl.setAttribute('pointer-events', 'none');
+          textEl.setAttribute('style', 'letter-spacing:0.3px; filter: drop-shadow(0 1px 4px #000a);');
+          const textPathEl = document.createElementNS(svgNS, 'textPath');
+          textPathEl.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${arcId}`);
+          textPathEl.setAttribute('startOffset', '50%');
+          textPathEl.textContent = textLine;
+          textEl.appendChild(textPathEl);
+          contentGroup.appendChild(textEl);
+        }
       }
       svg.appendChild(contentGroup);
     }
