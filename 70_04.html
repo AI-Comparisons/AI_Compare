@@ -228,22 +228,20 @@
   </style>
 </head>
 <body>
+
   <canvas id="lines-canvas"></canvas>
   <div id="main"></div>
   <div id="sidebar">
+    <div id="excel-upload" style="background:#232c3a;padding:8px 18px 8px 12px;border-radius:8px;box-shadow:0 2px 12px #0007;margin-bottom:16px;">
+      <label style="color:#ffe;font-weight:bold;">Load Excel:
+        <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="margin-left:8px;">
+      </label>
+    </div>
     <div id="legend"></div>
   </div>
 
-
-<!-- SheetJS (xlsx) CDN for Excel parsing -->
-<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-
-<!-- File input for Excel upload -->
-<div style="position:fixed;top:10px;right:400px;z-index:2000;background:#232c3a;padding:8px 18px 8px 12px;border-radius:8px;box-shadow:0 2px 12px #0007;">
-  <label style="color:#ffe;font-weight:bold;">Load Excel:
-    <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="margin-left:8px;">
-  </label>
-</div>
+  <!-- SheetJS (xlsx) CDN for Excel parsing -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
 <script>
 
