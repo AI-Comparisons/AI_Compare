@@ -245,6 +245,70 @@
 </div>
 
 <script>
+
+//initialize excel file data
+let data = [];
+// --- GLOBALS for node attachment/detachment ---
+window.attachedNode = null;
+window.detachNode = function() {
+  if (window.attachedNode) {
+    window.attachedNode.attached = false;
+    if (window.attachedNode.el) {
+      window.attachedNode.el.classList.remove('attached');
+    }
+    window.attachedNode = null;
+    setNodeOpacities(null);
+    clearSidebar();
+  }
+};
+
+// Auto-load demo Excel file on page load
+fetch('Data/AI_Tools_Table_07.xlsx')
+  .then(resp => resp.arrayBuffer())
+  .then(buf => {
+    const workbook = XLSX.read(buf, {type: 'array'});
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
+    initializeApp();
+  })
+  .catch(err => {
+    console.warn('Demo Excel file could not be loaded:', err);
+  });
+
+//function for processing data from excel file
+function handleExcelFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const workbook = XLSX.read(evt.target.result, {type: 'array'});
+    // Use first sheet
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+  // Excel data loaded
+    // Get all unique category names from all data rows
+    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
+    // Warn if data is empty or missing expected headers
+    if (!data.length) {
+      alert('No data rows found in the Excel file. Please check the file contents.');
+      return;
+    }
+    if (!data[0].Type && !data[0]['Name']) {
+      alert('Excel headers do not match expected names (e.g., "Type", "Name"). Please check the first row of your sheet.');
+      return;
+    }
+    // Now initialize the app (everything that used to run after ai_compare_data.js loaded)
+    initializeApp();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+//Process data from excel file
+document.getElementById('excelFileInput').addEventListener('change', handleExcelFile);
+
 // --- Utility/Helper Functions ---
 function circleIntersectsSegment(cx, cy, r, ax, ay, bx, by) {
   const dx = bx - ax;
@@ -294,50 +358,6 @@ function pointInConvexHull(px, py, hull) {
   return inside;
 }
 
-let data = [];
-// --- GLOBALS for node attachment/detachment ---
-window.attachedNode = null;
-window.detachNode = function() {
-  if (window.attachedNode) {
-    window.attachedNode.attached = false;
-    if (window.attachedNode.el) {
-      window.attachedNode.el.classList.remove('attached');
-    }
-    window.attachedNode = null;
-    setNodeOpacities(null);
-    clearSidebar();
-  }
-};
-
-function handleExcelFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(evt) {
-    const workbook = XLSX.read(evt.target.result, {type: 'array'});
-    // Use first sheet
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
-  // Excel data loaded
-    // Get all unique category names from all data rows
-    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
-    // Warn if data is empty or missing expected headers
-    if (!data.length) {
-      alert('No data rows found in the Excel file. Please check the file contents.');
-      return;
-    }
-    if (!data[0].Type && !data[0]['Name']) {
-      alert('Excel headers do not match expected names (e.g., "Type", "Name"). Please check the first row of your sheet.');
-      return;
-    }
-    // Now initialize the app (everything that used to run after ai_compare_data.js loaded)
-    initializeApp();
-  };
-  reader.readAsArrayBuffer(file);
-}
-document.getElementById('excelFileInput').addEventListener('change', handleExcelFile);
-
 // --- Node Orbit Arcs (dblclick) ---
 function addOrbitArcs(node) { /* ...existing code... */ }
 function removeOrbitArcs(node) { /* ...existing code... */ }
@@ -385,80 +405,101 @@ function initializeApp() {
   const typeToNodes = {};
   typeOrder.forEach(type => typeToNodes[type] = []);
   data.forEach((row, idx) => {
-    typeToNodes[row.Type].push({row, idx});
+    const type = row.Type || "Other";
+    typeToNodes[type].push({row, idx});
   });
   let nodeIdx = 0;
   const clusterRadius = 180;
   const clusterCenterRadius = 220;
   const clusterAngleStep = (2 * Math.PI) / typeOrder.length;
   typeOrder.forEach((type, tIdx) => {
-    const clusterCount = typeToNodes[type].length;
+    const nodesInCluster = typeToNodes[type].length;
     const clusterAngle = tIdx * clusterAngleStep;
-    const centerX = Math.cos(clusterAngle) * clusterCenterRadius + 320;
-    const centerY = Math.sin(clusterAngle) * clusterCenterRadius + 320;
-    const nodeCircleRadius = 60 + clusterCount * 2;
-    typeToNodes[type].forEach((item, i) => {
-      const angle = (2 * Math.PI * i) / clusterCount;
-      const x = centerX + Math.cos(angle) * nodeCircleRadius + Math.random()*8;
-      const y = centerY + Math.sin(angle) * nodeCircleRadius + Math.random()*8;
-      const div = document.createElement('div');
-      div.className = 'node';
-      const name = item.row.Name ? item.row.Name.split(/\s+/).join('<br>') : '';
-      const typeText = item.row.Type || '';
-      let categoryText = '';
+    const clusterCenterX = Math.cos(clusterAngle) * clusterCenterRadius + 320;
+    const clusterCenterY = Math.sin(clusterAngle) * clusterCenterRadius + 320;
+    const nodeRingRadius = 60 + nodesInCluster * 2;
+    // Place each node in a circular layout within its cluster
+    typeToNodes[type].forEach((item, nodeIdxInCluster) => {
+      const nodeAngle = (2 * Math.PI * nodeIdxInCluster) / nodesInCluster;
+      const nodeX = clusterCenterX + Math.cos(nodeAngle) * nodeRingRadius + Math.random() * 8;
+      const nodeY = clusterCenterY + Math.sin(nodeAngle) * nodeRingRadius + Math.random() * 8;
+      // Create node element
+      const nodeDiv = document.createElement('div');
+      nodeDiv.className = 'node';
+      // Prepare node label content
+      const nodeName = item.row.Name ? item.row.Name.split(/\s+/).join('<br>') : '';
+      const nodeType = item.row.Type || '';
+      const weblink = (item.row["Web Link"] || '').trim();
+      let nodeCategory = '';
       for (const cat of Object.keys(item.row)) {
-        if (cat !== 'Name' && cat !== 'Type' && item.row[cat]) {
-          categoryText = item.row[cat];
-          break;
+        if (cat !== 'Name' && cat !== 'Type' && cat !== 'Web Link' && item.row[cat] && String(item.row[cat]).trim() !== '') {
+          // Prefer 'Purpose' if present, then 'Description', then any other
+          if (cat === 'Purpose') {
+            nodeCategory = item.row[cat];
+            break;
+          }
+          if (cat === 'Description' && !nodeCategory) {
+            nodeCategory = item.row[cat];
+          }
+          if (!nodeCategory && cat !== 'Description') nodeCategory = item.row[cat];
         }
       }
-      div.innerHTML = `
+      nodeDiv.innerHTML = `
         <div style='display:flex;flex-direction:column;align-items:center;width:100%;height:100%;justify-content:center;'>
-          <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${typeText}</span>
-          <span style='font-size:0.95em;line-height:1.18;color:#fff;font-weight:bold;'>${name}</span>
-          <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${categoryText}</span>
+          <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${nodeType}</span>
+          <span style='font-size:0.95em;line-height:1.18;color:#fff;font-weight:bold;'>${nodeName}</span>
+          <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${nodeCategory}</span>
         </div>
       `;
-  div.style.background = window.typeColors[type];
-  div.style.borderColor = window.typeColors[type] || '#fff2';
-  div.style.borderWidth = '3px';
-  div.style.borderStyle = 'solid';
-  div.style.pointerEvents = 'auto';
-  div.style.zIndex = '1000';
-  // (removed debug click listener)
+      // Style node
+      nodeDiv.style.background = window.typeColors[type];
+      nodeDiv.style.borderColor = window.typeColors[type] || '#fff2';
+      nodeDiv.style.borderWidth = '3px';
+      nodeDiv.style.borderStyle = 'solid';
+      nodeDiv.style.pointerEvents = 'auto';
+      nodeDiv.style.zIndex = '1000';
+      // Set node glow effect
       const glowColor = window.typeColors[type].replace(/(rgba?\([^,]+,[^,]+,[^,]+),\s*([\d.]+)\)/, '$1,0.18)');
-      div.style.setProperty('--node-glow', glowColor);
-      div.style.left = `${x}px`;
-      div.style.top = `${y}px`;
-      document.getElementById('main').appendChild(div);
-  // (removed debug computed style log)
-      div.dataset.dataIdx = item.idx;
+      nodeDiv.style.setProperty('--node-glow', glowColor);
+      // Set initial position
+      nodeDiv.style.left = `${nodeX}px`;
+      nodeDiv.style.top = `${nodeY}px`;
+      document.getElementById('main').appendChild(nodeDiv);
+      // Store data index for sidebar lookup
+      nodeDiv.dataset.dataIdx = item.idx;
+      // Determine initial velocity (gentler for larger clusters)
       let velocityScale;
-      if (clusterCount > 5) {
+      if (nodesInCluster > 5) {
         velocityScale = 0.0012;
-      } else if (clusterCount > 4) {
+      } else if (nodesInCluster > 4) {
         velocityScale = 0.008;
       } else {
         velocityScale = 0.022;
       }
       let vx = (Math.random() - 0.5) * velocityScale;
       let vy = (Math.random() - 0.5) * velocityScale;
-      if (clusterCount > 5) {
+      if (nodesInCluster > 5) {
         const maxV = velocityScale * 0.5;
         vx = Math.max(-maxV, Math.min(vx, maxV));
         vy = Math.max(-maxV, Math.min(vy, maxV));
       }
-  nodes.push({
-        el: div,
-        x, y,
+      // Add node to global nodes array with cached dimensions and last position
+      nodes.push({
+        el: nodeDiv,
+        x: nodeX,
+        y: nodeY,
         vx,
         vy,
         idx: item.idx,
         attached: false,
         hoverTimer: null,
         lastHover: 0,
-        radius: 55,
-        type: type
+        radius: 55, // half of width/height for circle collision
+        type: type,
+        width: nodeDiv.offsetWidth,
+        height: nodeDiv.offsetHeight,
+        _lastLeft: nodeX,
+        _lastTop: nodeY
       });
       nodeIdx++;
     });
@@ -659,26 +700,36 @@ function initializeApp() {
           node.vy *= -0.18;
           node.vy = Math.max(-maxBounceVelocity, Math.min(node.vy, maxBounceVelocity));
         }
-        node.el.style.left = node.x + 'px';
-        node.el.style.top = node.y + 'px';
+        // Only update DOM if position changed
+        // Only update DOM if position changed (minimize layout thrashing)
+        if (node._lastLeft !== node.x) {
+          node.el.style.left = node.x + 'px';
+          node._lastLeft = node.x;
+        }
+        if (node._lastTop !== node.y) {
+          node.el.style.top = node.y + 'px';
+          node._lastTop = node.y;
+        }
       }
     }
     // Update orbit arcs to follow selected nodes
     nodes.forEach(node => {
+      // Update orbit arc SVG position to follow node center
       if (node._orbitArcs && node._orbitArcs.length > 0 && node._orbitArcSVG) {
-        const nodeCenterX = node.x + node.el.offsetWidth / 2;
-        const nodeCenterY = node.y + node.el.offsetHeight / 2;
+        const nodeCenterX = node.x + node.width / 2;
+        const nodeCenterY = node.y + node.height / 2;
         const arcOuterOffset = 60;
         const arcStroke = 72;
         const arcPadding = 36 / 2 + 4;
-        const arcSize = node.el.offsetWidth + arcOuterOffset + arcStroke + 8;
+        const arcSize = node.width + arcOuterOffset + arcStroke + 8;
         const svgMargin = arcStroke / 2 + 8;
         node._orbitArcSVG.style.left = `${nodeCenterX - arcSize / 2 - svgMargin}px`;
         node._orbitArcSVG.style.top = `${nodeCenterY - arcSize / 2 - svgMargin}px`;
       }
+      // Update debug dots to follow node center
       if (node._orbitArcDebugDots && node._orbitArcDebugDots.length > 0) {
-        const nodeCenterX = node.x + node.el.offsetWidth / 2;
-        const nodeCenterY = node.y + node.el.offsetHeight / 2;
+        const nodeCenterX = node.x + node.width / 2;
+        const nodeCenterY = node.y + node.height / 2;
         for (const dot of node._orbitArcDebugDots) {
           dot.style.left = `${nodeCenterX}px`;
           dot.style.top = `${nodeCenterY}px`;
@@ -1212,8 +1263,8 @@ function bindEventListeners() {
     hslToRgba(h, s, l)
   ];
   // SVG-based arcs
-  const arcAngles = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpans = [40, 40, 40, 120, 40, 40, 40];
+  const arcAngles = [0, 60, 100, 120, 240, 260, 300];
+  const arcSpans = [60, 40, 20, 120, 20, 40, 60];
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('width', svgWidth);
@@ -1277,17 +1328,17 @@ function bindEventListeners() {
   }
   // Add SVG textPath overlays for arcs 0,1,2,3,4,5,6 with labels
   const arcTextLabels = [
-    'Open',         // Arc 0
-    'Structure',    // Arc 1
-    'Education',    // Arc 2
-    'Purpose/Description', // Arc 3
-    'Price',        // Arc 4
-    'Install',      // Arc 5
-    'Local'         // Arc 6
+  'Purpose',    // Arc 0
+  'Install',    // Arc 1
+  'Open',       // Arc 2
+  'Description',// Arc 3 (label for arc text)
+  'Local',      // Arc 4
+  'Price',     // Arc 5
+  'Education'  // Arc 6
   ];
   // Arc geometry
-  const arcAnglesText = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpansText = [40, 40, 40, 120, 40, 40, 40];
+  const arcAnglesText = [0, 60, 100, 120, 240, 260, 300];
+  const arcSpansText = [60, 40, 20, 120, 20, 40, 60];
   for (let i = 0; i < arcTextLabels.length; i++) {
     if (!arcTextLabels[i]) continue;
     const rText = (arcSize/2) - arcPadding + arcStroke/2 + 12;
@@ -1340,35 +1391,41 @@ function bindEventListeners() {
     textElem.appendChild(textPath);
     svg.appendChild(textElem);
   }
-  // Inject node-specific Purpose/Description content along arc 3 (120° segment)
+  // Inject node-specific content for arcs 0,1,2,3,4,5,6
   try {
     const dataIdx = typeof node.idx === 'number' ? node.idx : parseInt(node.el.dataset.dataIdx, 10);
-    const purposeText = (data[dataIdx] && (data[dataIdx]["Purpose/Description"] || data[dataIdx]["Brief Purpose/Description"] || data[dataIdx]["Brief Purpose"])) || '';
-    if (purposeText) {
-      // Layout parameters
-      const arc3Start = 240; // degrees
-      const arc3End = 120;   // degrees (reverse direction)
-      const spanDeg = 120;
-  // Use a smaller radius for a tighter curve (inward offset)
-  const tightenPx = 16; // tweak 16-32 for taste
-  const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx; // inward-shifted center
-      const lineHeight = 14; // px
-      const fontSizePx = 12; // px
-      const maxLines = Math.max(2, Math.min(5, Math.floor((arcStroke - 8) / lineHeight)));
-      const charWidth = fontSizePx * 0.6; // rough average width per char
-
-      // Helper to approximate max chars per line from arc length
-      function maxCharsAtRadius(r) {
-        const pathLen = (2 * Math.PI * r) * (spanDeg / 360); // arc length
-        return Math.max(8, Math.floor((pathLen - 24) / charWidth)); // small margin
+  const arcDataFields = ["Purpose", "Install", "Open", null, "Local", "Price", "Education Suitability"];
+    for (let arcIdx of [0,1,2,3,4,5,6]) {
+      let field = arcDataFields[arcIdx];
+      let arcContent = null;
+      if (arcIdx === 3) {
+        arcContent = (data[dataIdx] && (data[dataIdx]["Description"] || data[dataIdx]["Purpose/Description"] || data[dataIdx]["Brief Purpose/Description"] || data[dataIdx]["Brief Purpose"])) || '';
+      } else if (field) {
+        arcContent = data[dataIdx] && data[dataIdx][field];
       }
-      // Word-wrap into up to maxLines lines
+      if (!arcContent) continue;
+      // Layout parameters
+      const arcStart = arcAnglesText[arcIdx];
+      const arcEnd = arcStart + arcSpansText[arcIdx];
+      const spanDeg = arcSpansText[arcIdx];
+  // Move arc text content for arcs 0,1,2,4,5,6 further inward (closer to center), leave arc 3 unchanged
+  let tightenPx = 16;
+  if (arcIdx !== 3) tightenPx = 36; // increase inward offset for all but arc 3 (includes 0,1,2,4,5,6)
+  const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx;
+      const lineHeight = 14;
+      const fontSizePx = 12;
+      const maxLines = Math.max(2, Math.min(5, Math.floor((arcStroke - 8) / lineHeight)));
+      const charWidth = fontSizePx * 0.6;
+      function maxCharsAtRadius(r) {
+        const pathLen = (2 * Math.PI * r) * (spanDeg / 360);
+        return Math.max(8, Math.floor((pathLen - 24) / charWidth));
+      }
       function wrapIntoLines(text, lines) {
         const words = (text + '').split(/\s+/).filter(Boolean);
         const result = [];
         let iWord = 0;
         for (let i = 0; i < lines; i++) {
-          const r = rBase + ((i - (lines - 1) / 2) * lineHeight); // distribute within stroke
+          const r = rBase + ((i - (lines - 1) / 2) * lineHeight);
           const cap = maxCharsAtRadius(r);
           let line = '';
           while (iWord < words.length) {
@@ -1379,38 +1436,47 @@ function bindEventListeners() {
           result.push(line);
           if (iWord >= words.length) break;
         }
-        // If leftover words, append ellipsis to last non-empty line
         if (iWord < words.length && result.length > 0) {
           const lastIdx = result.length - 1;
           if (result[lastIdx]) result[lastIdx] = result[lastIdx].replace(/[\s.]+$/, '') + '…';
         }
         return result;
       }
-      const lines = wrapIntoLines(purposeText, maxLines);
-
-      // Create a group to hold the multi-line curved text
-  const contentGroup = document.createElementNS(svgNS, 'g');
-  contentGroup.setAttribute('data-arc', 'purpose-text');
-  // Move the curved text up by ~3 line-heights in screen Y
-  const yShift = -1.25 * lineHeight;
-  contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
-
-      for (let i = 0; i < lines.length; i++) {
-        const textLine = lines[i];
+      let lines = wrapIntoLines(arcContent, maxLines);
+  // For arc 3, use reversed arc path (sweep-flag=0)
+  // For other arcs, use normal direction (sweep-flag=1)
+  // For arcs 0 (Purpose), 1 (Install), and 5 (Price), reverse line order for correct display
+  if ((arcIdx === 0 || arcIdx === 1 || arcIdx === 5) && lines.length > 1) lines = lines.reverse();
+      const contentGroup = document.createElementNS(svgNS, 'g');
+      contentGroup.setAttribute('data-arc', `arc${arcIdx}-content-text`);
+      const yShift = -1.25 * lineHeight;
+      contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
+      for (let j = 0; j < lines.length; j++) {
+        const textLine = lines[j];
         if (!textLine) continue;
-        const rText = rBase + ((i - (lines.length - 1) / 2) * lineHeight);
-        // Build reversed arc path for this radius (sweep-flag=0)
-        const x1t = (svgWidth/2) + rText * Math.cos((arc3Start-90)*Math.PI/180);
-        const y1t = (svgWidth/2) + rText * Math.sin((arc3Start-90)*Math.PI/180);
-        const x2t = (svgWidth/2) + rText * Math.cos((arc3End-90)*Math.PI/180);
-        const y2t = (svgWidth/2) + rText * Math.sin((arc3End-90)*Math.PI/180);
-        const arcId = `arc3-content-${Math.random().toString(36).slice(2)}`;
+        const rText = rBase + ((j - (lines.length - 1) / 2) * lineHeight);
+        let x1t, y1t, x2t, y2t, arcId, pathD;
+        if (arcIdx === 3) {
+          // Arc 3: reversed direction
+          x1t = (svgWidth/2) + rText * Math.cos((240-90)*Math.PI/180);
+          y1t = (svgWidth/2) + rText * Math.sin((240-90)*Math.PI/180);
+          x2t = (svgWidth/2) + rText * Math.cos((120-90)*Math.PI/180);
+          y2t = (svgWidth/2) + rText * Math.sin((120-90)*Math.PI/180);
+          arcId = `arc3-content-${Math.random().toString(36).slice(2)}`;
+          pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 0 0 ${x2t} ${y2t}`;
+        } else {
+          x1t = (svgWidth/2) + rText * Math.cos((arcStart-90)*Math.PI/180);
+          y1t = (svgWidth/2) + rText * Math.sin((arcStart-90)*Math.PI/180);
+          x2t = (svgWidth/2) + rText * Math.cos((arcEnd-90)*Math.PI/180);
+          y2t = (svgWidth/2) + rText * Math.sin((arcEnd-90)*Math.PI/180);
+          arcId = `arc${arcIdx}-content-${Math.random().toString(36).slice(2)}`;
+          pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 ${spanDeg>180?1:0} 1 ${x2t} ${y2t}`;
+        }
         const pathEl = document.createElementNS(svgNS, 'path');
         pathEl.setAttribute('id', arcId);
-        pathEl.setAttribute('d', `M ${x1t} ${y1t} A ${rText} ${rText} 0 0 0 ${x2t} ${y2t}`);
+        pathEl.setAttribute('d', pathD);
         pathEl.setAttribute('fill', 'none');
         contentGroup.appendChild(pathEl);
-
         const textEl = document.createElementNS(svgNS, 'text');
         textEl.setAttribute('fill', '#fff');
         textEl.setAttribute('font-size', `${fontSizePx}px`);
@@ -1800,25 +1866,63 @@ function drawTypeLines() {
 const sidebar = document.getElementById('sidebar');
 function showSidebar(row, nodeEl) {
   sidebar.innerHTML = '';
-  categories.forEach(cat => {
+  // Show all non-empty fields except Name, Type, Web Link
+  // Always show Type at the top if present
+  if (row['Type'] && String(row['Type']).trim() !== '') {
     const rowDiv = document.createElement('div');
     rowDiv.className = 'sidebar-row';
     const keySpan = document.createElement('span');
     keySpan.className = 'sidebar-key';
-    keySpan.textContent = cat;
+    keySpan.textContent = 'Type';
     const valSpan = document.createElement('span');
     valSpan.className = 'sidebar-val';
-    valSpan.textContent = row[cat] || '';
+    valSpan.textContent = row['Type'];
     rowDiv.appendChild(keySpan);
     rowDiv.appendChild(valSpan);
-    // Keep extra spacing for long description rows
-    if (cat === 'Brief Purpose/Description') {
+    sidebar.appendChild(rowDiv);
+  }
+  for (const cat of categories) {
+    if (cat === 'Name' || cat === 'Type' || cat === 'Web Link') continue;
+    const val = row[cat];
+    if (val === undefined || val === null || String(val).trim() === '') continue;
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'sidebar-row';
+    const keySpan = document.createElement('span');
+    keySpan.className = 'sidebar-key';
+    keySpan.textContent = (cat === 'Description') ? 'Description' : cat;
+    const valSpan = document.createElement('span');
+    valSpan.className = 'sidebar-val';
+    valSpan.textContent = val;
+    rowDiv.appendChild(keySpan);
+    rowDiv.appendChild(valSpan);
+    if (cat === 'Description') {
       rowDiv.style.marginBottom = '34px';
     }
     sidebar.appendChild(rowDiv);
-  });
-  // Floating UI optional - for advanced positioning!
-  // You could add floating popups here if you want.
+  }
+  // Add Web Link at the end if present and non-empty
+  const weblink = (row["Web Link"] || '').trim();
+  if (weblink) {
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'sidebar-row';
+    const keySpan = document.createElement('span');
+    keySpan.className = 'sidebar-key';
+    keySpan.textContent = 'Web Link';
+    const valSpan = document.createElement('span');
+    valSpan.className = 'sidebar-val';
+    const a = document.createElement('a');
+    a.href = weblink;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = weblink;
+    a.style.color = '#ffe066';
+    a.style.textDecoration = 'underline';
+    valSpan.appendChild(a);
+    rowDiv.appendChild(keySpan);
+    rowDiv.appendChild(valSpan);
+    sidebar.appendChild(rowDiv);
+  }
+  // Do not show any content after the weblink
 }
 function clearSidebar() {
   // Optionally: keep previous info, or clear
