@@ -1262,35 +1262,58 @@ function bindEventListeners() {
     hslToRgba((h+36)%360, s, l),
     hslToRgba(h, s, l)
   ];
-  // SVG-based arcs
-  const arcAngles = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpans = [40, 40, 40, 120, 40, 40, 40];
+  // SVG-based arcs using user-specified geometry and labels
+  const arcLabels = [
+    'Price',      // 0
+    'Install',    // 1
+    'Local',      // 2
+    'Open',       // 3
+    'Purpose',    // 4
+    'Structure',  // 5
+    'Education',  // 6
+    'Description' // 7
+  ];
+  const arcStartAngles = [245, 275, 300, 315, 330, 30, 80, 125];
+  const arcEndAngles   = [275, 300, 315, 330, 30, 80, 125, 245];
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('width', svgWidth);
   svg.setAttribute('height', svgHeight);
   svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
   svg.style.position = 'absolute';
-  // Center SVG using node.x/y and svgMargin
   svg.style.left = `${node.x + node.el.offsetWidth/2 - arcSize/2 - svgMargin}px`;
   svg.style.top = `${node.y + node.el.offsetHeight/2 - arcSize/2 - svgMargin}px`;
-  svg.style.zIndex = '10'; // ensure below node divs but above canvas
-  svg.style.pointerEvents = 'none'; // allow mouse events to pass through
+  svg.style.zIndex = '10';
+  svg.style.pointerEvents = 'none';
   svg.style.display = 'block';
-  // svg.style.background = 'rgba(255,0,0,0.05)'; // Removed debug background
-  for (let i = 0; i < 7; i++) {
-    const startAngle = arcAngles[i];
-    const span = arcSpans[i];
-    const endAngle = startAngle + span;
-    // Orbit radius: center to outer edge minus half stroke
-    const r = (arcSize/2) - arcPadding;
-    const x1 = (svgWidth/2) + r * Math.cos((startAngle-90)*Math.PI/180);
-    const y1 = (svgWidth/2) + r * Math.sin((startAngle-90)*Math.PI/180);
-    const x2 = (svgWidth/2) + r * Math.cos((endAngle-90)*Math.PI/180);
-    const y2 = (svgWidth/2) + r * Math.sin((endAngle-90)*Math.PI/180);
+  // Center of SVG for arc drawing
+  const cx = svgWidth / 2;
+  const cy = svgHeight / 2;
+  const r = (arcSize / 2) - arcPadding;
+  // Draw thick stroked SVG arcs, all perfectly centered on the node
+  // The node center is at (cx, cy), and the arc radius is set so the inner edge matches the node circle
+  const nodeRadius = nodeDiameter / 2;
+  const arcRadius = nodeRadius + (arcStroke / 2); // center of stroke, arcs hug node circle
+  // Ensure cx, cy is the true node center
+  // (svgWidth/2, svgHeight/2) is already the node center in the SVG
+  for (let i = 0; i < arcLabels.length; i++) {
+    const startAngle = arcStartAngles[i];
+    const endAngle = arcEndAngles[i];
+    // Convert angles to radians
+    const startRad = (startAngle - 90) * Math.PI / 180;
+    const endRad = (endAngle - 90) * Math.PI / 180;
+    // Arc endpoints
+    const x1 = cx + arcRadius * Math.cos(startRad);
+    const y1 = cy + arcRadius * Math.sin(startRad);
+    const x2 = cx + arcRadius * Math.cos(endRad);
+    const y2 = cy + arcRadius * Math.sin(endRad);
+    let arcDelta = (endAngle - startAngle + 360) % 360;
+    if (arcDelta === 0) arcDelta = 360;
+    const largeArcFlag = arcDelta > 180 ? 1 : 0;
+    // Always use sweepFlag=1 for consistent orientation (as with 'Purpose')
     const arcPath = [
       `M ${x1} ${y1}`,
-      `A ${r} ${r} 0 ${span>180?1:0} 1 ${x2} ${y2}`
+      `A ${arcRadius} ${arcRadius} 0 ${largeArcFlag} 1 ${x2} ${y2}`
     ].join(' ');
     const path = document.createElementNS(svgNS, 'path');
     path.setAttribute('d', arcPath);
@@ -1298,79 +1321,29 @@ function bindEventListeners() {
     path.setAttribute('stroke-width', arcStroke);
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke-linecap', 'butt');
-    // No special stroke width or filter for arc 3; all arcs are the same
     svg.appendChild(path);
-    // ...labels code unchanged...
-    const midAngle = startAngle + span/2;
-    const labelRadius = r + arcStroke/2 + 8;
-    const labelX = (svgWidth/2) + labelRadius * Math.cos((midAngle-90)*Math.PI/180);
-    const labelY = (svgWidth/2) + labelRadius * Math.sin((midAngle-90)*Math.PI/180);
-    // --- Number label creation is commented out ---
-    /*
-    const label = document.createElement('div');
-    label.textContent = i;
-    label.style.position = 'absolute';
-    label.style.left = `${node.x + node.el.offsetWidth/2 - arcSize/2 - svgMargin + labelX}px`;
-    label.style.top = `${node.y + node.el.offsetHeight/2 - arcSize/2 - svgMargin + labelY}px`;
-    label.style.transform = 'translate(-50%, -50%)';
-    label.style.color = '#fff';
-    label.style.fontWeight = 'bold';
-    label.style.fontSize = '1.5em';
-    label.style.background = 'rgba(0,0,0,0.7)';
-    label.style.padding = '4px 12px';
-    label.style.borderRadius = '12px';
-    label.style.pointerEvents = 'none';
-    label.style.zIndex = '9999';
-    main.appendChild(label);
-    if (!node._orbitArcLabels) node._orbitArcLabels = [];
-    node._orbitArcLabels.push(label);
-    */
+    // ...labels code unchanged (if any follows)...
   }
-  // Add SVG textPath overlays for arcs 0,1,2,3,4,5,6 with labels
-  const arcTextLabels = [
-  'Open',         // Arc 0
-  'Structure',    // Arc 1
-  'Education',    // Arc 2
-  'Description',  // Arc 3 (label for arc text)
-  'Price',        // Arc 4
-  'Install',      // Arc 5
-  'Local'         // Arc 6
-  ];
-  // Arc geometry
-  const arcAnglesText = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpansText = [40, 40, 40, 120, 40, 40, 40];
-  for (let i = 0; i < arcTextLabels.length; i++) {
-    if (!arcTextLabels[i]) continue;
+  // Add SVG textPath overlays for all arcs with labels, using the same geometry as the colored arcs
+  for (let i = 0; i < arcLabels.length; i++) {
+    if (!arcLabels[i]) continue;
     const rText = (arcSize/2) - arcPadding + arcStroke/2 + 12;
-    let arcPath, arcId;
-    if (i === 3) {
-      // Restore arc 3 text to original: start at 240, end at 120, reverse direction (sweep-flag=0)
-      const arc3Start = 240;
-      const arc3End = 120;
-      const x1t = (svgWidth/2) + rText * Math.cos((arc3Start-90)*Math.PI/180);
-      const y1t = (svgWidth/2) + rText * Math.sin((arc3Start-90)*Math.PI/180);
-      const x2t = (svgWidth/2) + rText * Math.cos((arc3End-90)*Math.PI/180);
-      const y2t = (svgWidth/2) + rText * Math.sin((arc3End-90)*Math.PI/180);
-      arcPath = [
-        `M ${x1t} ${y1t}`,
-        `A ${rText} ${rText} 0 0 0 ${x2t} ${y2t}`
-      ].join(' ');
-      arcId = `arc3-text-path-${Math.random().toString(36).substr(2,9)}`;
-    } else {
-      // All other arcs: normal direction
-      const startAngle = arcAnglesText[i];
-      const span = arcSpansText[i];
-      const endAngle = startAngle + span;
-      const x1t = (svgWidth/2) + rText * Math.cos((startAngle-90)*Math.PI/180);
-      const y1t = (svgWidth/2) + rText * Math.sin((startAngle-90)*Math.PI/180);
-      const x2t = (svgWidth/2) + rText * Math.cos((endAngle-90)*Math.PI/180);
-      const y2t = (svgWidth/2) + rText * Math.sin((endAngle-90)*Math.PI/180);
-      arcPath = [
-        `M ${x1t} ${y1t}`,
-        `A ${rText} ${rText} 0 ${span>180?1:0} 1 ${x2t} ${y2t}`
-      ].join(' ');
-      arcId = `arc${i}-text-path-${Math.random().toString(36).substr(2,9)}`;
-    }
+    const startAngle = arcStartAngles[i];
+    const endAngle = arcEndAngles[i];
+    // Use same sweep/large-arc logic as arc drawing
+    let arcDelta = (endAngle - startAngle + 360) % 360;
+    if (arcDelta === 0) arcDelta = 360;
+    const largeArcFlag = arcDelta > 180 ? 1 : 0;
+    const sweepFlag = (startAngle > endAngle) ? 1 : 0;
+    const x1t = (svgWidth/2) + rText * Math.cos((startAngle-90)*Math.PI/180);
+    const y1t = (svgWidth/2) + rText * Math.sin((startAngle-90)*Math.PI/180);
+    const x2t = (svgWidth/2) + rText * Math.cos((endAngle-90)*Math.PI/180);
+    const y2t = (svgWidth/2) + rText * Math.sin((endAngle-90)*Math.PI/180);
+    const arcPath = [
+      `M ${x1t} ${y1t}`,
+      `A ${rText} ${rText} 0 ${largeArcFlag} ${sweepFlag} ${x2t} ${y2t}`
+    ].join(' ');
+    const arcId = `arc${i}-text-path-${Math.random().toString(36).substr(2,9)}`;
     const arcPathElem = document.createElementNS(svgNS, 'path');
     arcPathElem.setAttribute('id', arcId);
     arcPathElem.setAttribute('d', arcPath);
@@ -1387,7 +1360,7 @@ function bindEventListeners() {
     const textPath = document.createElementNS(svgNS, 'textPath');
     textPath.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${arcId}`);
     textPath.setAttribute('startOffset', '50%');
-    textPath.textContent = arcTextLabels[i];
+    textPath.textContent = arcLabels[i];
     textElem.appendChild(textPath);
     svg.appendChild(textElem);
   }

@@ -245,118 +245,22 @@
 </div>
 
 <script>
-
-//initialize excel file data
+// --- Globals (match v2) ---
 let data = [];
-// --- GLOBALS for node attachment/detachment ---
-window.attachedNode = null;
-window.detachNode = function() {
-  if (window.attachedNode) {
-    window.attachedNode.attached = false;
-    if (window.attachedNode.el) {
-      window.attachedNode.el.classList.remove('attached');
-    }
-    window.attachedNode = null;
-    setNodeOpacities(null);
-    clearSidebar();
-  }
-};
-
-// Auto-load demo Excel file on page load
-fetch('Data/AI_Tools_Table_07.xlsx')
-  .then(resp => resp.arrayBuffer())
-  .then(buf => {
-    const workbook = XLSX.read(buf, {type: 'array'});
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
-    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
-    initializeApp();
-  })
-  .catch(err => {
-    console.warn('Demo Excel file could not be loaded:', err);
-  });
-
-//function for processing data from excel file
-function handleExcelFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(evt) {
-    const workbook = XLSX.read(evt.target.result, {type: 'array'});
-    // Use first sheet
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
-  // Excel data loaded
-    // Get all unique category names from all data rows
-    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
-    // Warn if data is empty or missing expected headers
-    if (!data.length) {
-      alert('No data rows found in the Excel file. Please check the file contents.');
-      return;
-    }
-    if (!data[0].Type && !data[0]['Name']) {
-      alert('Excel headers do not match expected names (e.g., "Type", "Name"). Please check the first row of your sheet.');
-      return;
-    }
-    // Now initialize the app (everything that used to run after ai_compare_data.js loaded)
-    initializeApp();
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-//Process data from excel file
-document.getElementById('excelFileInput').addEventListener('change', handleExcelFile);
-
-// --- Utility/Helper Functions ---
-function circleIntersectsSegment(cx, cy, r, ax, ay, bx, by) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const segLenSq = dx * dx + dy * dy;
-  if (segLenSq === 0) return Math.hypot(cx - ax, cy - ay) < r;
-  let t = ((cx - ax) * dx + (cy - ay) * dy) / segLenSq;
-  t = Math.max(0, Math.min(1, t));
-  const closestX = ax + t * dx;
-  const closestY = ay + t * dy;
-  return Math.hypot(cx - closestX, cy - closestY) < r - 0.5;
-}
-
-function getConvexHull(points) {
-  points = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
-  const cross = (o, a, b) => (a.x - o.x)*(b.y - o.y) - (a.y - o.y)*(b.x - o.x);
-  const lower = [];
-  for (const p of points) {
-    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
-    lower.push(p);
-  }
-  const upper = [];
-  for (let i = points.length-1; i >= 0; i--) {
-    const p = points[i];
-    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  upper.pop();
-  lower.pop();
-  return lower.concat(upper);
-}
-
-function pointInConvexHull(px, py, hull) {
-  let inside = true;
-  for (let i = 0; i < hull.length; i++) {
-    const a = hull[i];
-    const b = hull[(i+1)%hull.length];
-    const nx = b.y - a.y;
-    const ny = a.x - b.x;
-    const vx = px - a.x;
-    const vy = py - a.y;
-    if (nx * vx + ny * vy < 0) {
-      inside = false;
-      break;
-    }
-  }
-  return inside;
-}
+let categories = [];
+const typeColors = {};
+const palette = [
+  "rgba(30,64,175,0.78)",   "rgba(244,63,94,0.78)",   "rgba(34,211,238,0.78)",  "rgba(245,158,66,0.78)",
+  "rgba(162,28,175,0.78)",  "rgba(22,163,74,0.78)",   "rgba(251,191,36,0.78)",  "rgba(190,24,93,0.78)",
+  "rgba(14,165,233,0.78)",  "rgba(248,113,113,0.78)", "rgba(124,58,237,0.78)",  "rgba(250,204,21,0.78)",
+  "rgba(225,29,72,0.78)",   "rgba(132,204,22,0.78)",  "rgba(99,102,241,0.78)",  "rgba(251,113,133,0.78)",
+  "rgba(244,114,182,0.78)", "rgba(20,184,166,0.78)",  "rgba(252,211,77,0.78)",  "rgba(192,38,211,0.78)"
+];
+const nodes = [];
+const main = document.getElementById('main');
+const linesCanvas = document.getElementById('lines-canvas');
+const ctx = linesCanvas.getContext('2d');
+// (top-level declarations only, do not redeclare below)
 
 // --- Node Orbit Arcs (dblclick) ---
 function addOrbitArcs(node) { /* ...existing code... */ }
@@ -373,12 +277,11 @@ function toggleOrbitArcs(node) {
 // Main app initialization. Sets up DOM, nodes, events, legend, and starts animation. Called after Excel loads.
 function initializeApp() {
   // Clear previous nodes, legend, sidebar
-  document.getElementById('main').innerHTML = '';
+  main.innerHTML = '';
   document.getElementById('legend').innerHTML = '';
   document.getElementById('sidebar').innerHTML = '';
-  // Reset global variables
-  // Reset global variables
-  window.typeColors = {};
+  // Reset globals
+  Object.keys(typeColors).forEach(k => delete typeColors[k]);
   nodes.length = 0;
   window.selectedNode = null;
   window.attachedNode = null;
@@ -386,18 +289,11 @@ function initializeApp() {
   window.hoverStartTime = 0;
   window.boundarySegmentsByType = {};
   // Generate unique types and their colors
-  const palette = [
-    "rgba(30,64,175,0.78)",   "rgba(244,63,94,0.78)",   "rgba(34,211,238,0.78)",  "rgba(245,158,66,0.78)",
-    "rgba(162,28,175,0.78)",  "rgba(22,163,74,0.78)",   "rgba(251,191,36,0.78)",  "rgba(190,24,93,0.78)",
-    "rgba(14,165,233,0.78)",  "rgba(248,113,113,0.78)", "rgba(124,58,237,0.78)",  "rgba(250,204,21,0.78)",
-    "rgba(225,29,72,0.78)",   "rgba(132,204,22,0.78)",  "rgba(99,102,241,0.78)",  "rgba(251,113,133,0.78)",
-    "rgba(244,114,182,0.78)", "rgba(20,184,166,0.78)",  "rgba(252,211,77,0.78)",  "rgba(192,38,211,0.78)"
-  ];
   let i = 0;
   for (const row of data) {
     const type = row.Type || "Other";
-    if (!(window.typeColors[type])) {
-      window.typeColors[type] = palette[i++ % palette.length];
+    if (!(typeColors[type])) {
+      typeColors[type] = palette[i++ % palette.length];
     }
   }
   // Group nodes by type in clusters at the start
@@ -521,9 +417,9 @@ function initializeApp() {
   });
   // --- Animation, Physics, and Event Listeners ---
   // Remove any previous event listeners by replacing main and linesCanvas
-  const main = document.getElementById('main');
-  const linesCanvas = document.getElementById('lines-canvas');
-  const ctx = linesCanvas.getContext('2d');
+  // const main = document.getElementById('main');
+  // const linesCanvas = document.getElementById('lines-canvas');
+  // const ctx = linesCanvas.getContext('2d');
 
   // (Removed duplicate dblclick event listener attachment)
   main.addEventListener('click', (e) => {
@@ -911,7 +807,7 @@ function initializeApp() {
   window.animate();
 }
 
-// Optionally, auto-load a default Excel file for demo (uncomment and set path if desired)
+// Optionally, auto-load a default Excel file for demo (uncomment to enable when hosted)
 // fetch('Data/AI_Tools_Table_07.xlsx').then(resp => resp.arrayBuffer()).then(buf => {
 //   const workbook = XLSX.read(buf, {type: 'array'});
 //   const sheetName = workbook.SheetNames[0];
@@ -921,193 +817,346 @@ function initializeApp() {
 //   initializeApp();
 // });
 
-// Generate unique types and their colors (with alpha for translucency)
-const typeColors = {};
-const palette = [
-  "rgba(30,64,175,0.78)",   // deep blue
-  "rgba(244,63,94,0.78)",   // vivid red
-  "rgba(34,211,238,0.78)",  // cyan
-  "rgba(245,158,66,0.78)",  // orange
-  "rgba(162,28,175,0.78)",  // purple
-  "rgba(22,163,74,0.78)",   // green
-  "rgba(251,191,36,0.78)",  // yellow
-  "rgba(190,24,93,0.78)",   // magenta
-  "rgba(14,165,233,0.78)",  // blue
-  "rgba(248,113,113,0.78)", // coral
-  "rgba(124,58,237,0.78)",  // violet
-  "rgba(250,204,21,0.78)",  // gold
-  "rgba(225,29,72,0.78)",   // crimson
-  "rgba(132,204,22,0.78)",  // lime
-  "rgba(99,102,241,0.78)",  // periwinkle
-  "rgba(251,113,133,0.78)", // rose
-  "rgba(244,114,182,0.78)", // pink
-  "rgba(20,184,166,0.78)",  // teal
-  "rgba(252,211,77,0.78)",  // pale yellow
-  "rgba(192,38,211,0.78)",  // purple dark
-];
-let i = 0;
-for (const row of data) {
-  const type = row.Type || "Other";
-  if (!(type in typeColors)) {
-    typeColors[type] = palette[i++ % palette.length];
-  }
-}
-
-// categories is now set after Excel load
-
-// Floating node positions/speeds
-const nodes = [];
-const main = document.getElementById('main');
-const linesCanvas = document.getElementById('lines-canvas');
-const ctx = linesCanvas.getContext('2d');
-
-function resizeCanvas() {
-  linesCanvas.width = window.innerWidth - 420;
-  linesCanvas.height = window.innerHeight;
-  linesCanvas.style.position = 'absolute';
-  linesCanvas.style.left = '0';
-  linesCanvas.style.top = '0';
-  linesCanvas.style.zIndex = '0';
-  linesCanvas.style.pointerEvents = 'none';
-}
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-
-// --- Repulsion Physics ---
-function applyRepulsion() {
-  const repulsionStrength = 60; // Reference gentle movement
-  const maxRepulseDelta = 0.04; // Clamp max velocity change per frame from repulsion
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const n1 = nodes[i];
-      const n2 = nodes[j];
-      const dx = (n2.x + n2.radius) - (n1.x + n1.radius);
-      const dy = (n2.y + n2.radius) - (n1.y + n1.radius);
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const minDist = n1.radius + n2.radius + 4; // 4px buffer just outside the edge
-      if (dist < minDist && dist > 0) {
-        // Repulsion force for circles
-        const force = repulsionStrength / (dist * dist);
-        let fx = force * dx / dist;
-        let fy = force * dy / dist;
-        // Clamp the force to avoid outlier effects
-        fx = Math.max(-maxRepulseDelta, Math.min(fx, maxRepulseDelta));
-        fy = Math.max(-maxRepulseDelta, Math.min(fy, maxRepulseDelta));
-        if (!n1.attached) {
-          n1.vx -= fx;
-          n1.vy -= fy;
-        }
-        if (!n2.attached) {
-          n2.vx += fx;
-          n2.vy += fy;
-        }
-        // Optional: separate overlapping nodes
-        const overlap = minDist - dist;
-        if (overlap > 0) {
-          const sepX = (dx / dist) * (overlap / 2);
-          const sepY = (dy / dist) * (overlap / 2);
-          if (!n1.attached) {
-            n1.x -= sepX;
-            n1.y -= sepY;
-          }
-          if (!n2.attached) {
-            n2.x += sepX;
-            n2.y += sepY;
-          }
-        }
-      }
-    }
-  }
-}
-
-
-// Group nodes by type in clusters at the start
-const typeOrder = Object.keys(typeColors);
-const typeToNodes = {};
-typeOrder.forEach(type => typeToNodes[type] = []);
-data.forEach((row, idx) => {
-  typeToNodes[row.Type].push({row, idx});
+// Manual Excel file upload for local testing
+document.getElementById('excelFileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const workbook = XLSX.read(evt.target.result, {type: 'array'});
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
+    initializeApp();
+  };
+  reader.readAsArrayBuffer(file);
 });
-let nodeIdx = 0;
-const clusterRadius = 180;
-const clusterCenterRadius = 220;
-const clusterAngleStep = (2 * Math.PI) / typeOrder.length;
-typeOrder.forEach((type, tIdx) => {
-  const clusterCount = typeToNodes[type].length;
-  // Arrange clusters in a circle
-  const clusterAngle = tIdx * clusterAngleStep;
-  const centerX = Math.cos(clusterAngle) * clusterCenterRadius + 320;
-  const centerY = Math.sin(clusterAngle) * clusterCenterRadius + 320;
-  const nodeCircleRadius = 60 + clusterCount * 2;
-  typeToNodes[type].forEach((item, i) => {
-    // Arrange nodes in a circle within the cluster
-    const angle = (2 * Math.PI * i) / clusterCount;
-    const x = centerX + Math.cos(angle) * nodeCircleRadius + Math.random()*8;
-    const y = centerY + Math.sin(angle) * nodeCircleRadius + Math.random()*8;
-    const div = document.createElement('div');
-    div.className = 'node';
-    // Compose node innerHTML: Type (small, above), Name (main), Category (small, below)
-    const name = item.row.Name ? item.row.Name.split(/\s+/).join('<br>') : '';
-    const typeText = item.row.Type || '';
-    // Find first non-empty category (other than Name and Type)
-    let categoryText = '';
-    for (const cat of Object.keys(item.row)) {
-      if (cat !== 'Name' && cat !== 'Type' && item.row[cat]) {
-        categoryText = item.row[cat];
-        break;
+
+// --- Animation, Physics, and Event Listeners ---
+  // Remove any previous event listeners by replacing main and linesCanvas
+  // const main = document.getElementById('main');
+  // const linesCanvas = document.getElementById('lines-canvas');
+  // const ctx = linesCanvas.getContext('2d');
+
+  // (Removed duplicate dblclick event listener attachment)
+  main.addEventListener('click', (e) => {
+    // Only remove arcs if clicking the background, not a node or its children
+    let el = e.target;
+    while (el) {
+      if (el.classList && el.classList.contains('node')) {
+        return;
       }
+      el = el.parentElement;
     }
-    div.innerHTML = `
-      <div style='display:flex;flex-direction:column;align-items:center;width:100%;height:100%;justify-content:center;'>
-        <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${typeText}</span>
-        <span style='font-size:0.95em;line-height:1.18;color:#fff;font-weight:bold;'>${name}</span>
-        <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${categoryText}</span>
-      </div>
-    `;
-    div.style.background = typeColors[type];
-    div.style.borderColor = typeColors[type] || '#fff2';
-    // Make glow more translucent by lowering alpha
-    const glowColor = typeColors[type].replace(/(rgba?\([^,]+,[^,]+,[^,]+),\s*([\d.]+)\)/, '$1,0.18)');
-    div.style.setProperty('--node-glow', glowColor);
-    div.style.left = `${x}px`;
-    div.style.top = `${y}px`;
-    main.appendChild(div);
-    // Store the correct data index for sidebar lookup
-    div.dataset.dataIdx = item.idx;
-    // Restore gentle but visible movement (reference style)
-    let velocityScale;
-    if (clusterCount > 5) {
-      velocityScale = 0.0012; // gentle for large groups
-    } else if (clusterCount > 4) {
-      velocityScale = 0.008;
-    } else {
-      velocityScale = 0.022; // gentle for small groups
-    }
-    // Clamp velocity to avoid outliers for large clusters
-    let vx = (Math.random() - 0.5) * velocityScale;
-    let vy = (Math.random() - 0.5) * velocityScale;
-    if (clusterCount > 5) {
-      const maxV = velocityScale * 0.5;
-      vx = Math.max(-maxV, Math.min(vx, maxV));
-      vy = Math.max(-maxV, Math.min(vy, maxV));
-    }
-    nodes.push({
-      el: div,
-      x, y,
-      vx,
-      vy,
-      idx: item.idx,
-      attached: false,
-      hoverTimer: null,
-      lastHover: 0,
-      radius: 55, // half of width/height for circle collision
-      type: type
-    });
-    nodeIdx++;
+    nodes.forEach(n => removeOrbitArcs(n));
   });
-});
+  // Resize canvas
+  function resizeCanvas() {
+    linesCanvas.width = window.innerWidth - 420;
+    linesCanvas.height = window.innerHeight;
+    linesCanvas.style.position = 'absolute';
+    linesCanvas.style.left = '0';
+    linesCanvas.style.top = '0';
+    linesCanvas.style.zIndex = '0';
+    linesCanvas.style.pointerEvents = 'none';
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
 
-// --- Node Selection ---
+
+
+  // --- Animation Loop (restored, with border collision/repulsion added) ---
+  // Helper: does circle at (cx,cy) with radius r intersect segment (ax,ay)-(bx,by)?
+  function circleIntersectsSegment(cx, cy, r, ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const segLenSq = dx * dx + dy * dy;
+    if (segLenSq === 0) return Math.hypot(cx - ax, cy - ay) < r;
+    let t = ((cx - ax) * dx + (cy - ay) * dy) / segLenSq;
+    t = Math.max(0, Math.min(1, t));
+    const closestX = ax + t * dx;
+    const closestY = ay + t * dy;
+    return Math.hypot(cx - closestX, cy - closestY) < r - 0.5;
+  }
+
+  function animate() {
+  // (removed debug log for animate)
+  const substeps = 16;
+    for (const node of nodes) {
+      if (!node.attached) {
+        let prevX = node.x;
+        let prevY = node.y;
+        let blocked = false;
+        for (let s = 0; s < substeps; s++) {
+          applyRepulsion();
+          let nextX = node.x + node.vx / substeps;
+          let nextY = node.y + node.vy / substeps;
+          let bounced = false;
+          for (const otherType of typeOrder) {
+            if (otherType === node.type) continue;
+            const segments = window.boundarySegmentsByType[otherType] || [];
+            for (const seg of segments) {
+              const a = seg[0];
+              const b = seg[1];
+              const ax = a.x + a.radius;
+              const ay = a.y + a.radius;
+              const bx = b.x + b.radius;
+              const by = b.y + b.radius;
+              const cx = nextX + node.radius;
+              const cy = nextY + node.radius;
+              if (circleIntersectsSegment(cx, cy, node.radius, ax, ay, bx, by)) {
+                // Calculate the normal of the segment
+                const dx = bx - ax;
+                const dy = by - ay;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                const nx = (dy) / len;
+                const ny = -(dx) / len;
+                // Reflect velocity
+                const dot = node.vx * nx + node.vy * ny;
+                node.vx = node.vx - 2 * dot * nx;
+                node.vy = node.vy - 2 * dot * ny;
+                // Move node just outside the boundary
+                nextX = node.x + node.vx / substeps;
+                nextY = node.y + node.vy / substeps;
+                bounced = true;
+                break;
+              }
+            }
+            if (bounced) break;
+          }
+          if (!bounced) {
+            node.x = nextX;
+            node.y = nextY;
+            prevX = node.x;
+            prevY = node.y;
+          } else {
+            blocked = true;
+            break;
+          }
+        }
+        // --- Push foreign nodes out of convex hulls and boundaries ---
+  // pointInConvexHull moved to top-level helpers
+        for (const otherType of typeOrder) {
+          if (otherType === node.type) continue;
+          const typeNodes = nodes.filter(n => n.type === otherType);
+          if (typeNodes.length < 3) continue;
+          const hull = typeNodes.map(n => ({x: n.x + n.radius, y: n.y + n.radius}));
+          let insideHull = pointInConvexHull(node.x + node.radius, node.y + node.radius, hull);
+          let crossesBoundary = false;
+          let pushX = 0, pushY = 0;
+          let minDist = Infinity;
+          const segments = window.boundarySegmentsByType[otherType] || [];
+          for (const seg of segments) {
+            const a = seg[0];
+            const b = seg[1];
+            const ax = a.x + a.radius;
+            const ay = a.y + a.radius;
+            const bx = b.x + b.radius;
+            const by = b.y + b.radius;
+            const cx = node.x + node.radius;
+            const cy = node.y + node.radius;
+            if (circleIntersectsSegment(cx, cy, node.radius, ax, ay, bx, by)) {
+              crossesBoundary = true;
+            }
+            // Find closest point on segment
+            const dx = bx - ax;
+            const dy = by - ay;
+            const segLenSq = dx*dx + dy*dy;
+            let t = ((cx - ax) * dx + (cy - ay) * dy) / segLenSq;
+            t = Math.max(0, Math.min(1, t));
+            const closestX = ax + t * dx;
+            const closestY = ay + t * dy;
+            const dist = Math.hypot(cx - closestX, cy - closestY);
+            if (dist < minDist) {
+              minDist = dist;
+              // Outward normal
+              const nx = by - ay;
+              const ny = ax - bx;
+              const len = Math.hypot(nx, ny) || 1;
+              pushX = nx / len;
+              pushY = ny / len;
+            }
+          }
+          if (insideHull || crossesBoundary) {
+            const pushStrength = 0.38;
+            node.vx += pushX * pushStrength;
+            node.vy += pushY * pushStrength;
+            node.x += pushX * (minDist < node.radius ? node.radius - minDist + 2 : 2);
+            node.y += pushY * (minDist < node.radius ? node.radius - minDist + 2 : 2);
+          }
+        }
+        // Bounce off browser edges using node circle collision (no snapping)
+        const maxBounceVelocity = 0.25;
+        const leftEdge = 0;
+        const topEdge = 0;
+        const rightEdge = window.innerWidth - 420;
+        const bottomEdge = window.innerHeight;
+        const cx = node.x + node.radius;
+        const cy = node.y + node.radius;
+        if (cx - node.radius < leftEdge) {
+          node.x += (leftEdge - (cx - node.radius));
+          node.vx *= -0.18;
+          node.vx = Math.max(-maxBounceVelocity, Math.min(node.vx, maxBounceVelocity));
+        }
+        if (cx + node.radius > rightEdge) {
+          node.x -= ((cx + node.radius) - rightEdge);
+          node.vx *= -0.18;
+          node.vx = Math.max(-maxBounceVelocity, Math.min(node.vx, maxBounceVelocity));
+        }
+        if (cy - node.radius < topEdge) {
+          node.y += (topEdge - (cy - node.radius));
+          node.vy *= -0.18;
+          node.vy = Math.max(-maxBounceVelocity, Math.min(node.vy, maxBounceVelocity));
+        }
+        if (cy + node.radius > bottomEdge) {
+          node.y -= ((cy + node.radius) - bottomEdge);
+          node.vy *= -0.18;
+          node.vy = Math.max(-maxBounceVelocity, Math.min(node.vy, maxBounceVelocity));
+        }
+        // Only update DOM if position changed
+        // Only update DOM if position changed (minimize layout thrashing)
+        if (node._lastLeft !== node.x) {
+          node.el.style.left = node.x + 'px';
+          node._lastLeft = node.x;
+        }
+        if (node._lastTop !== node.y) {
+          node.el.style.top = node.y + 'px';
+          node._lastTop = node.y;
+        }
+      }
+    }
+    // Update orbit arcs to follow selected nodes
+    nodes.forEach(node => {
+      // Update orbit arc SVG position to follow node center
+      if (node._orbitArcs && node._orbitArcs.length > 0 && node._orbitArcSVG) {
+        const nodeCenterX = node.x + node.width / 2;
+        const nodeCenterY = node.y + node.height / 2;
+        const arcOuterOffset = 60;
+        const arcStroke = 72;
+        const arcPadding = 36 / 2 + 4;
+        const arcSize = node.width + arcOuterOffset + arcStroke + 8;
+        const svgMargin = arcStroke / 2 + 8;
+        node._orbitArcSVG.style.left = `${nodeCenterX - arcSize / 2 - svgMargin}px`;
+        node._orbitArcSVG.style.top = `${nodeCenterY - arcSize / 2 - svgMargin}px`;
+      }
+      // Update debug dots to follow node center
+      if (node._orbitArcDebugDots && node._orbitArcDebugDots.length > 0) {
+        const nodeCenterX = node.x + node.width / 2;
+        const nodeCenterY = node.y + node.height / 2;
+        for (const dot of node._orbitArcDebugDots) {
+          dot.style.left = `${nodeCenterX}px`;
+          dot.style.top = `${nodeCenterY}px`;
+        }
+      }
+    });
+    drawTypeLines();
+    requestAnimationFrame(animate);
+  }
+  window.animate = animate;
+  // --- Draw lines between nodes (convex hulls, etc.) ---
+  function drawTypeLines() {
+    ctx.clearRect(0, 0, linesCanvas.width, linesCanvas.height);
+    window.boundarySegmentsByType = {};
+  // getConvexHull moved to top-level helpers
+    const typeOrder = Object.keys(window.typeColors);
+    for (const type of typeOrder) {
+      const typeNodes = nodes.filter(n => n.type === type);
+      const points = typeNodes.map(n => ({x: n.x + 55, y: n.y + 55, node: n}));
+      const hull = getConvexHull(points);
+      window.boundarySegmentsByType[type] = [];
+      // Draw boundary (hull) connections
+      for (let i = 0; i < hull.length; i++) {
+        const a = hull[i];
+        const b = hull[(i+1)%hull.length];
+        window.boundarySegmentsByType[type].push([a.node, b.node]);
+        ctx.save();
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([18, 12]);
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const ux = dx/dist;
+        const uy = dy/dist;
+        const r1 = a.node.radius;
+        const r2 = b.node.radius;
+        const x1 = a.x + ux*r1;
+        const y1 = a.y + uy*r1;
+        const x2 = b.x - ux*r2;
+        const y2 = b.y - uy*r2;
+        const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.15, window.typeColors[type]);
+        grad.addColorStop(0.5, window.typeColors[type]);
+        grad.addColorStop(0.85, window.typeColors[type]);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        const glowColor = window.typeColors[type].replace(/(rgba?\([^,]+,[^,]+,[^,]+),\s*([\d.]+)\)/, '$1,0.18)');
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+      // Draw dashed line from each interior node to nearest hull node
+      const hullNodes = new Set(hull.map(h => h.node));
+      for (const n of typeNodes) {
+        if (!hullNodes.has(n)) {
+          // Find nearest hull node
+          let minDist = Infinity;
+          let nearest = null;
+          const nx = n.x + 55;
+          const ny = n.y + 55;
+          for (const h of hull) {
+            const hx = h.x;
+            const hy = h.y;
+            const d = Math.sqrt((nx-hx)*(nx-hx) + (ny-hy)*(ny-hy));
+            if (d < minDist) {
+              minDist = d;
+              nearest = h;
+            }
+          }
+          if (nearest) {
+            ctx.save();
+            ctx.lineWidth = 1.6;
+            ctx.setLineDash([8, 8]);
+            const grad = ctx.createLinearGradient(nx, ny, nearest.x, nearest.y);
+            grad.addColorStop(0, 'rgba(0,0,0,0)');
+            grad.addColorStop(0.25, window.typeColors[type]);
+            grad.addColorStop(0.75, window.typeColors[type]);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.strokeStyle = grad;
+            ctx.shadowColor = window.typeColors[type];
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.moveTo(nx, ny);
+            ctx.lineTo(nearest.x, nearest.y);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.setLineDash([]);
+            ctx.restore();
+          }
+        }
+      }
+    }
+    // Mask out node circles so lines are not visible behind them
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const node of nodes) {
+      const cx = node.x + 55;
+      const cy = node.y + 55;
+      ctx.beginPath();
+      ctx.arc(cx, cy, node.radius + 1.5, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // --- Node Selection ---
 let selectedNode = null;
 
 // Helper to add segmented orbit arcs to a node
@@ -1263,8 +1312,8 @@ function bindEventListeners() {
     hslToRgba(h, s, l)
   ];
   // SVG-based arcs
-  const arcAngles = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpans = [40, 40, 40, 120, 40, 40, 40];
+  const arcAngles = [0, 60, 100, 120, 240, 260, 300];
+  const arcSpans = [60, 40, 20, 120, 20, 40, 60];
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('width', svgWidth);
@@ -1328,23 +1377,25 @@ function bindEventListeners() {
   }
   // Add SVG textPath overlays for arcs 0,1,2,3,4,5,6 with labels
   const arcTextLabels = [
-  'Open',         // Arc 0
-  'Structure',    // Arc 1
-  'Education',    // Arc 2
-  'Description',  // Arc 3 (label for arc text)
-  'Price',        // Arc 4
-  'Install',      // Arc 5
-  'Local'         // Arc 6
+  'Purpose',    // Arc 0
+  'Install',    // Arc 1
+  'Open',       // Arc 2
+  'Description',// Arc 3 (label for arc text)
+  'Local',      // Arc 4
+  'Price',     // Arc 5
+  'Education'  // Arc 6
   ];
   // Arc geometry
-  const arcAnglesText = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpansText = [40, 40, 40, 120, 40, 40, 40];
+  const arcAnglesText = [0, 60, 100, 120, 240, 260, 300];
+  const arcSpansText = [60, 40, 20, 120, 20, 40, 60];
+  // Map arc index to data field
+  const arcDataFields = ["Purpose", "Install", "Open", null, "Local", "Price", "Suit"];
   for (let i = 0; i < arcTextLabels.length; i++) {
     if (!arcTextLabels[i]) continue;
     const rText = (arcSize/2) - arcPadding + arcStroke/2 + 12;
     let arcPath, arcId;
     if (i === 3) {
-      // Restore arc 3 text to original: start at 240, end at 120, reverse direction (sweep-flag=0)
+      // Arc 3: label path is reversed (sweep-flag=0)
       const arc3Start = 240;
       const arc3End = 120;
       const x1t = (svgWidth/2) + rText * Math.cos((arc3Start-90)*Math.PI/180);
@@ -1371,6 +1422,7 @@ function bindEventListeners() {
       ].join(' ');
       arcId = `arc${i}-text-path-${Math.random().toString(36).substr(2,9)}`;
     }
+    // Draw the fixed label for every arc (always the same as before)
     const arcPathElem = document.createElementNS(svgNS, 'path');
     arcPathElem.setAttribute('id', arcId);
     arcPathElem.setAttribute('d', arcPath);
@@ -1392,34 +1444,31 @@ function bindEventListeners() {
     svg.appendChild(textElem);
   }
   // Inject node-specific Purpose/Description content along arc 3 (120° segment)
+  // Arc 3: multi-line content (Description) as before
   try {
     const dataIdx = typeof node.idx === 'number' ? node.idx : parseInt(node.el.dataset.dataIdx, 10);
     const descriptionText = (data[dataIdx] && (data[dataIdx]["Description"] || data[dataIdx]["Purpose/Description"] || data[dataIdx]["Brief Purpose/Description"] || data[dataIdx]["Brief Purpose"])) || '';
     if (descriptionText) {
-      // Layout parameters
+      // Layout parameters (same as before)
       const arc3Start = 240; // degrees
       const arc3End = 120;   // degrees (reverse direction)
       const spanDeg = 120;
-      // Use a smaller radius for a tighter curve (inward offset)
-      const tightenPx = 16; // tweak 16-32 for taste
-      const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx; // inward-shifted center
-      const lineHeight = 14; // px
-      const fontSizePx = 12; // px
+      const tightenPx = 16;
+      const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx;
+      const lineHeight = 14;
+      const fontSizePx = 12;
       const maxLines = Math.max(2, Math.min(5, Math.floor((arcStroke - 8) / lineHeight)));
-      const charWidth = fontSizePx * 0.6; // rough average width per char
-
-      // Helper to approximate max chars per line from arc length
+      const charWidth = fontSizePx * 0.6;
       function maxCharsAtRadius(r) {
-        const pathLen = (2 * Math.PI * r) * (spanDeg / 360); // arc length
-        return Math.max(8, Math.floor((pathLen - 24) / charWidth)); // small margin
+        const pathLen = (2 * Math.PI * r) * (spanDeg / 360);
+        return Math.max(8, Math.floor((pathLen - 24) / charWidth));
       }
-      // Word-wrap into up to maxLines lines
       function wrapIntoLines(text, lines) {
         const words = (text + '').split(/\s+/).filter(Boolean);
         const result = [];
         let iWord = 0;
         for (let i = 0; i < lines; i++) {
-          const r = rBase + ((i - (lines - 1) / 2) * lineHeight); // distribute within stroke
+          const r = rBase + ((i - (lines - 1) / 2) * lineHeight);
           const cap = maxCharsAtRadius(r);
           let line = '';
           while (iWord < words.length) {
@@ -1430,7 +1479,6 @@ function bindEventListeners() {
           result.push(line);
           if (iWord >= words.length) break;
         }
-        // If leftover words, append ellipsis to last non-empty line
         if (iWord < words.length && result.length > 0) {
           const lastIdx = result.length - 1;
           if (result[lastIdx]) result[lastIdx] = result[lastIdx].replace(/[\s.]+$/, '') + '…';
@@ -1438,19 +1486,14 @@ function bindEventListeners() {
         return result;
       }
       const lines = wrapIntoLines(descriptionText, maxLines);
-
-      // Create a group to hold the multi-line curved text
       const contentGroup = document.createElementNS(svgNS, 'g');
       contentGroup.setAttribute('data-arc', 'description-text');
-      // Move the curved text up by ~3 line-heights in screen Y
       const yShift = -1.25 * lineHeight;
       contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
-
       for (let i = 0; i < lines.length; i++) {
         const textLine = lines[i];
         if (!textLine) continue;
         const rText = rBase + ((i - (lines.length - 1) / 2) * lineHeight);
-        // Build reversed arc path for this radius (sweep-flag=0)
         const x1t = (svgWidth/2) + rText * Math.cos((arc3Start-90)*Math.PI/180);
         const y1t = (svgWidth/2) + rText * Math.sin((arc3Start-90)*Math.PI/180);
         const x2t = (svgWidth/2) + rText * Math.cos((arc3End-90)*Math.PI/180);
@@ -1461,7 +1504,89 @@ function bindEventListeners() {
         pathEl.setAttribute('d', `M ${x1t} ${y1t} A ${rText} ${rText} 0 0 0 ${x2t} ${y2t}`);
         pathEl.setAttribute('fill', 'none');
         contentGroup.appendChild(pathEl);
+        const textEl = document.createElementNS(svgNS, 'text');
+        textEl.setAttribute('fill', '#fff');
+        textEl.setAttribute('font-size', `${fontSizePx}px`);
+        textEl.setAttribute('font-weight', '600');
+        textEl.setAttribute('text-anchor', 'middle');
+        textEl.setAttribute('dominant-baseline', 'middle');
+        textEl.setAttribute('pointer-events', 'none');
+        textEl.setAttribute('style', 'letter-spacing:0.3px; filter: drop-shadow(0 1px 4px #000a);');
+        const textPathEl = document.createElementNS(svgNS, 'textPath');
+        textPathEl.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${arcId}`);
+        textPathEl.setAttribute('startOffset', '50%');
+        textPathEl.textContent = textLine;
+        textEl.appendChild(textPathEl);
+        contentGroup.appendChild(textEl);
+      }
+      svg.appendChild(contentGroup);
+    }
+  } catch (e) {
+    // Fail-safe: don't block arcs if data missing
+  }
 
+  // For arcs 0,1,2,4,5,6: add multi-line, curved content from Excel, following the arc's geometry
+  try {
+    const dataIdx = typeof node.idx === 'number' ? node.idx : parseInt(node.el.dataset.dataIdx, 10);
+    const arcDataFields = ["Purpose", "Install", "Open", null, "Local", "Price", "Suit"];
+    for (let i of [0,1,2,4,5,6]) {
+      const field = arcDataFields[i];
+      if (!field || !data[dataIdx] || !data[dataIdx][field]) continue;
+      const arcStart = arcAnglesText[i];
+      const arcEnd = arcStart + arcSpansText[i];
+      const spanDeg = arcSpansText[i];
+      const tightenPx = 16;
+      const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx;
+      const lineHeight = 14;
+      const fontSizePx = 12;
+      const maxLines = Math.max(2, Math.min(5, Math.floor((arcStroke - 8) / lineHeight)));
+      const charWidth = fontSizePx * 0.6;
+      function maxCharsAtRadius(r) {
+        const pathLen = (2 * Math.PI * r) * (spanDeg / 360);
+        return Math.max(8, Math.floor((pathLen - 24) / charWidth));
+      }
+      function wrapIntoLines(text, lines) {
+        const words = (text + '').split(/\s+/).filter(Boolean);
+        const result = [];
+        let iWord = 0;
+        for (let j = 0; j < lines; j++) {
+          const r = rBase + ((j - (lines - 1) / 2) * lineHeight);
+          const cap = maxCharsAtRadius(r);
+          let line = '';
+          while (iWord < words.length) {
+            const w = words[iWord];
+            const next = line ? line + ' ' + w : w;
+            if (next.length <= cap) { line = next; iWord++; } else { break; }
+          }
+          result.push(line);
+          if (iWord >= words.length) break;
+        }
+        if (iWord < words.length && result.length > 0) {
+          const lastIdx = result.length - 1;
+          if (result[lastIdx]) result[lastIdx] = result[lastIdx].replace(/[\s.]+$/, '') + '…';
+        }
+        return result;
+      }
+      const lines = wrapIntoLines(data[dataIdx][field], maxLines);
+      const contentGroup = document.createElementNS(svgNS, 'g');
+      contentGroup.setAttribute('data-arc', `arc${i}-content-text`);
+      const yShift = -1.25 * lineHeight;
+      contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
+      for (let j = 0; j < lines.length; j++) {
+        const textLine = lines[j];
+        if (!textLine) continue;
+        const rText = rBase + ((j - (lines.length - 1) / 2) * lineHeight);
+        // Build arc path for this radius (follow the arc's geometry)
+        const x1t = (svgWidth/2) + rText * Math.cos((arcStart-90)*Math.PI/180);
+        const y1t = (svgWidth/2) + rText * Math.sin((arcStart-90)*Math.PI/180);
+        const x2t = (svgWidth/2) + rText * Math.cos((arcEnd-90)*Math.PI/180);
+        const y2t = (svgWidth/2) + rText * Math.sin((arcEnd-90)*Math.PI/180);
+        const arcId = `arc${i}-content-${Math.random().toString(36).slice(2)}`;
+        const pathEl = document.createElementNS(svgNS, 'path');
+        pathEl.setAttribute('id', arcId);
+        pathEl.setAttribute('d', `M ${x1t} ${y1t} A ${rText} ${rText} 0 ${spanDeg>180?1:0} 1 ${x2t} ${y2t}`);
+        pathEl.setAttribute('fill', 'none');
+        contentGroup.appendChild(pathEl);
         const textEl = document.createElementNS(svgNS, 'text');
         textEl.setAttribute('fill', '#fff');
         textEl.setAttribute('font-size', `${fontSizePx}px`);
@@ -1553,9 +1678,7 @@ main.addEventListener('click', (e) => {
 });
 
 // --- Node Dragging ---
-let isDragging = false;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
+// (use top-level isDragging, dragOffsetX, dragOffsetY)
 
 nodes.forEach((node) => {
   node.el.addEventListener('mousedown', (e) => {
@@ -1846,7 +1969,6 @@ function drawTypeLines() {
 }
 
 
-// ...existing code...
 // Sidebar logic
 const sidebar = document.getElementById('sidebar');
 function showSidebar(row, nodeEl) {
@@ -1915,7 +2037,7 @@ function clearSidebar() {
 }
 
 // Populate legend
-const legend = document.getElementById('legend');
+// (use top-level legend)
 for (const [type, color] of Object.entries(typeColors)) {
   const span = document.createElement('span');
   span.innerHTML = `<span class="legend-dot" style="background:${color}"></span>${type}`;

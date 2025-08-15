@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en"></html>
+<meta charset="utf-8">
+    <head>
+        <style>
+            div.arc {
+                position: absolute;
+                border: 80px solid transparent;
+                display: inline-block;
+                min-width: 200px;
+                min-height: 200px;
+                border-radius: 50%;
+                top: 0;
+                left: 0;
+                border-color: transparent;
+                -ms-transform: rotate(-1deg);
+                -webkit-transform: rotate(-1deg);
+                transform: rotate(-1deg);
+            }
+
+            div.q1 { border-top-color: blue; left: 2px; border-radius: 50%;}
+            /* div.q2 { border-right-color: #000; top: 2px; left: 2px; border-radius: 50%;} */
+            div.q2.seg2a { border-right-color: #f00; }
+            div.q2.seg2b { border-right-color: #0f0; }
+            div.q2.seg2c { border-right-color: #00f; }
+            div.q3 { border-bottom-color: #000; top: 2px; }
+            /*div.q4 { border-left-color: #000; }*/
+            div.q4.seg4a { border-left-color: #ff0; }
+            div.q4.seg4b { border-left-color: #0ff; }
+            div.q4.seg4c { border-left-color: #f0f; }
+
+        </style>
+    </head>
+
+    <body>
+        <div class="arc q1"></div>
+        <!-- Arc 2 divided into 3 segments -->
+        <div class="arc q2 seg2a" style="transform: rotate(0deg);"></div>
+        <div class="arc q2 seg2b" style="transform: rotate(30deg);"></div>
+        <div class="arc q2 seg2c" style="transform: rotate(60deg);"></div>
+        <!-- Arc 4 divided into 3 segments -->
+        <div class="arc q4 seg4a" style="transform: rotate(0deg);"></div>
+        <div class="arc q4 seg4b" style="transform: rotate(-30deg);"></div>
+        <div class="arc q4 seg4c" style="transform: rotate(-60deg);"></div>
+        <div class="arc q3"></div>
+    </body>
+</html>

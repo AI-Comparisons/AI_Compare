@@ -1263,8 +1263,8 @@ function bindEventListeners() {
     hslToRgba(h, s, l)
   ];
   // SVG-based arcs
-  const arcAngles = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpans = [40, 40, 40, 120, 40, 40, 40];
+  const arcAngles = [0, 60, 100, 120, 240, 260, 300];
+  const arcSpans = [60, 40, 20, 120, 20, 40, 60];
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('width', svgWidth);
@@ -1328,13 +1328,13 @@ function bindEventListeners() {
   }
   // Add SVG textPath overlays for arcs 0,1,2,3,4,5,6 with labels
   const arcTextLabels = [
-  'Open',         // Arc 0
-  'Structure',    // Arc 1
-  'Education',    // Arc 2
-  'Description',  // Arc 3 (label for arc text)
-  'Price',        // Arc 4
-  'Install',      // Arc 5
-  'Local'         // Arc 6
+  'Purpose',    // Arc 0
+  'Install',    // Arc 1
+  'Open',       // Arc 2
+  'Description',// Arc 3 (label for arc text)
+  'Local',      // Arc 4
+  'Price',     // Arc 5
+  'Education'  // Arc 6
   ];
   // Arc geometry
   const arcAnglesText = [0, 40, 80, 120, 240, 280, 320];

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Isolated SVG Arcs</title>
+  <style>
+    body {
+      background: #120825;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <svg id="arc-svg" width="420" height="420" viewBox="0 0 420 420">
+    <!-- Arcs will be drawn here -->
+  </svg>
+  <script>
+    // Arc parameters
+    const arcAngles = [0, 40, 80, 120, 240, 280, 320];
+    const arcSpans = [40, 40, 40, 120, 40, 40, 40];
+    const arcColors = [
+      '#3c6df7', '#f43f5e', '#22d3ee', '#f59e42', '#a21caf', '#16a34a', '#fbbf24'
+    ];
+    const cx = 210, cy = 210, r = 160, arcStroke = 72;
+    const svg = document.getElementById('arc-svg');
+    for (let i = 0; i < arcAngles.length; i++) {
+      const startAngle = arcAngles[i];
+      const span = arcSpans[i];
+      const endAngle = startAngle + span;
+      const startRad = (startAngle - 90) * Math.PI / 180;
+      const endRad = (endAngle - 90) * Math.PI / 180;
+      const x1 = cx + r * Math.cos(startRad);
+      const y1 = cy + r * Math.sin(startRad);
+      const x2 = cx + r * Math.cos(endRad);
+      const y2 = cy + r * Math.sin(endRad);
+      const largeArcFlag = span > 180 ? 1 : 0;
+      const arcPath = [
+        `M ${x1} ${y1}`,
+        `A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2}`
+      ].join(' ');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', arcPath);
+      path.setAttribute('stroke', arcColors[i % arcColors.length]);
+      path.setAttribute('stroke-width', arcStroke);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-linecap', 'butt');
+      svg.appendChild(path);
+    }
+  </script>
+</body>
+</html>

@@ -245,70 +245,6 @@
 </div>
 
 <script>
-
-//initialize excel file data
-let data = [];
-// --- GLOBALS for node attachment/detachment ---
-window.attachedNode = null;
-window.detachNode = function() {
-  if (window.attachedNode) {
-    window.attachedNode.attached = false;
-    if (window.attachedNode.el) {
-      window.attachedNode.el.classList.remove('attached');
-    }
-    window.attachedNode = null;
-    setNodeOpacities(null);
-    clearSidebar();
-  }
-};
-
-// Auto-load demo Excel file on page load
-fetch('Data/AI_Tools_Table_07.xlsx')
-  .then(resp => resp.arrayBuffer())
-  .then(buf => {
-    const workbook = XLSX.read(buf, {type: 'array'});
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
-    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
-    initializeApp();
-  })
-  .catch(err => {
-    console.warn('Demo Excel file could not be loaded:', err);
-  });
-
-//function for processing data from excel file
-function handleExcelFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(evt) {
-    const workbook = XLSX.read(evt.target.result, {type: 'array'});
-    // Use first sheet
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
-  // Excel data loaded
-    // Get all unique category names from all data rows
-    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
-    // Warn if data is empty or missing expected headers
-    if (!data.length) {
-      alert('No data rows found in the Excel file. Please check the file contents.');
-      return;
-    }
-    if (!data[0].Type && !data[0]['Name']) {
-      alert('Excel headers do not match expected names (e.g., "Type", "Name"). Please check the first row of your sheet.');
-      return;
-    }
-    // Now initialize the app (everything that used to run after ai_compare_data.js loaded)
-    initializeApp();
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-//Process data from excel file
-document.getElementById('excelFileInput').addEventListener('change', handleExcelFile);
-
 // --- Utility/Helper Functions ---
 function circleIntersectsSegment(cx, cy, r, ax, ay, bx, by) {
   const dx = bx - ax;
@@ -358,6 +294,50 @@ function pointInConvexHull(px, py, hull) {
   return inside;
 }
 
+let data = [];
+// --- GLOBALS for node attachment/detachment ---
+window.attachedNode = null;
+window.detachNode = function() {
+  if (window.attachedNode) {
+    window.attachedNode.attached = false;
+    if (window.attachedNode.el) {
+      window.attachedNode.el.classList.remove('attached');
+    }
+    window.attachedNode = null;
+    setNodeOpacities(null);
+    clearSidebar();
+  }
+};
+
+function handleExcelFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const workbook = XLSX.read(evt.target.result, {type: 'array'});
+    // Use first sheet
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    data = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+  // Excel data loaded
+    // Get all unique category names from all data rows
+    categories = Array.from(new Set(data.flatMap(row => Object.keys(row))));
+    // Warn if data is empty or missing expected headers
+    if (!data.length) {
+      alert('No data rows found in the Excel file. Please check the file contents.');
+      return;
+    }
+    if (!data[0].Type && !data[0]['Name']) {
+      alert('Excel headers do not match expected names (e.g., "Type", "Name"). Please check the first row of your sheet.');
+      return;
+    }
+    // Now initialize the app (everything that used to run after ai_compare_data.js loaded)
+    initializeApp();
+  };
+  reader.readAsArrayBuffer(file);
+}
+document.getElementById('excelFileInput').addEventListener('change', handleExcelFile);
+
 // --- Node Orbit Arcs (dblclick) ---
 function addOrbitArcs(node) { /* ...existing code... */ }
 function removeOrbitArcs(node) { /* ...existing code... */ }
@@ -405,8 +385,7 @@ function initializeApp() {
   const typeToNodes = {};
   typeOrder.forEach(type => typeToNodes[type] = []);
   data.forEach((row, idx) => {
-    const type = row.Type || "Other";
-    typeToNodes[type].push({row, idx});
+    typeToNodes[row.Type].push({row, idx});
   });
   let nodeIdx = 0;
   const clusterRadius = 180;
@@ -429,21 +408,14 @@ function initializeApp() {
       // Prepare node label content
       const nodeName = item.row.Name ? item.row.Name.split(/\s+/).join('<br>') : '';
       const nodeType = item.row.Type || '';
-      const weblink = (item.row["Web Link"] || '').trim();
       let nodeCategory = '';
       for (const cat of Object.keys(item.row)) {
-        if (cat !== 'Name' && cat !== 'Type' && cat !== 'Web Link' && item.row[cat] && String(item.row[cat]).trim() !== '') {
-          // Prefer 'Purpose' if present, then 'Description', then any other
-          if (cat === 'Purpose') {
-            nodeCategory = item.row[cat];
-            break;
-          }
-          if (cat === 'Description' && !nodeCategory) {
-            nodeCategory = item.row[cat];
-          }
-          if (!nodeCategory && cat !== 'Description') nodeCategory = item.row[cat];
+        if (cat !== 'Name' && cat !== 'Type' && item.row[cat]) {
+          nodeCategory = item.row[cat];
+          break;
         }
       }
+      // Set node inner HTML
       nodeDiv.innerHTML = `
         <div style='display:flex;flex-direction:column;align-items:center;width:100%;height:100%;justify-content:center;'>
           <span style='font-size:0.75em;line-height:1.1;color:#ffe6;'>${nodeType}</span>
@@ -1328,13 +1300,13 @@ function bindEventListeners() {
   }
   // Add SVG textPath overlays for arcs 0,1,2,3,4,5,6 with labels
   const arcTextLabels = [
-  'Open',         // Arc 0
-  'Structure',    // Arc 1
-  'Education',    // Arc 2
-  'Description',  // Arc 3 (label for arc text)
-  'Price',        // Arc 4
-  'Install',      // Arc 5
-  'Local'         // Arc 6
+    'Open',         // Arc 0
+    'Structure',    // Arc 1
+    'Education',    // Arc 2
+    'Purpose/Description', // Arc 3
+    'Price',        // Arc 4
+    'Install',      // Arc 5
+    'Local'         // Arc 6
   ];
   // Arc geometry
   const arcAnglesText = [0, 40, 80, 120, 240, 280, 320];
@@ -1394,15 +1366,15 @@ function bindEventListeners() {
   // Inject node-specific Purpose/Description content along arc 3 (120° segment)
   try {
     const dataIdx = typeof node.idx === 'number' ? node.idx : parseInt(node.el.dataset.dataIdx, 10);
-    const descriptionText = (data[dataIdx] && (data[dataIdx]["Description"] || data[dataIdx]["Purpose/Description"] || data[dataIdx]["Brief Purpose/Description"] || data[dataIdx]["Brief Purpose"])) || '';
-    if (descriptionText) {
+    const purposeText = (data[dataIdx] && (data[dataIdx]["Purpose/Description"] || data[dataIdx]["Brief Purpose/Description"] || data[dataIdx]["Brief Purpose"])) || '';
+    if (purposeText) {
       // Layout parameters
       const arc3Start = 240; // degrees
       const arc3End = 120;   // degrees (reverse direction)
       const spanDeg = 120;
-      // Use a smaller radius for a tighter curve (inward offset)
-      const tightenPx = 16; // tweak 16-32 for taste
-      const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx; // inward-shifted center
+  // Use a smaller radius for a tighter curve (inward offset)
+  const tightenPx = 16; // tweak 16-32 for taste
+  const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx; // inward-shifted center
       const lineHeight = 14; // px
       const fontSizePx = 12; // px
       const maxLines = Math.max(2, Math.min(5, Math.floor((arcStroke - 8) / lineHeight)));
@@ -1437,14 +1409,14 @@ function bindEventListeners() {
         }
         return result;
       }
-      const lines = wrapIntoLines(descriptionText, maxLines);
+      const lines = wrapIntoLines(purposeText, maxLines);
 
       // Create a group to hold the multi-line curved text
-      const contentGroup = document.createElementNS(svgNS, 'g');
-      contentGroup.setAttribute('data-arc', 'description-text');
-      // Move the curved text up by ~3 line-heights in screen Y
-      const yShift = -1.25 * lineHeight;
-      contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
+  const contentGroup = document.createElementNS(svgNS, 'g');
+  contentGroup.setAttribute('data-arc', 'purpose-text');
+  // Move the curved text up by ~3 line-heights in screen Y
+  const yShift = -1.25 * lineHeight;
+  contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
 
       for (let i = 0; i < lines.length; i++) {
         const textLine = lines[i];
@@ -1851,63 +1823,25 @@ function drawTypeLines() {
 const sidebar = document.getElementById('sidebar');
 function showSidebar(row, nodeEl) {
   sidebar.innerHTML = '';
-  // Show all non-empty fields except Name, Type, Web Link
-  // Always show Type at the top if present
-  if (row['Type'] && String(row['Type']).trim() !== '') {
+  categories.forEach(cat => {
     const rowDiv = document.createElement('div');
     rowDiv.className = 'sidebar-row';
     const keySpan = document.createElement('span');
     keySpan.className = 'sidebar-key';
-    keySpan.textContent = 'Type';
+    keySpan.textContent = cat;
     const valSpan = document.createElement('span');
     valSpan.className = 'sidebar-val';
-    valSpan.textContent = row['Type'];
+    valSpan.textContent = row[cat] || '';
     rowDiv.appendChild(keySpan);
     rowDiv.appendChild(valSpan);
-    sidebar.appendChild(rowDiv);
-  }
-  for (const cat of categories) {
-    if (cat === 'Name' || cat === 'Type' || cat === 'Web Link') continue;
-    const val = row[cat];
-    if (val === undefined || val === null || String(val).trim() === '') continue;
-    const rowDiv = document.createElement('div');
-    rowDiv.className = 'sidebar-row';
-    const keySpan = document.createElement('span');
-    keySpan.className = 'sidebar-key';
-    keySpan.textContent = (cat === 'Description') ? 'Description' : cat;
-    const valSpan = document.createElement('span');
-    valSpan.className = 'sidebar-val';
-    valSpan.textContent = val;
-    rowDiv.appendChild(keySpan);
-    rowDiv.appendChild(valSpan);
-    if (cat === 'Description') {
+    // Keep extra spacing for long description rows
+    if (cat === 'Brief Purpose/Description') {
       rowDiv.style.marginBottom = '34px';
     }
     sidebar.appendChild(rowDiv);
-  }
-  // Add Web Link at the end if present and non-empty
-  const weblink = (row["Web Link"] || '').trim();
-  if (weblink) {
-    const rowDiv = document.createElement('div');
-    rowDiv.className = 'sidebar-row';
-    const keySpan = document.createElement('span');
-    keySpan.className = 'sidebar-key';
-    keySpan.textContent = 'Web Link';
-    const valSpan = document.createElement('span');
-    valSpan.className = 'sidebar-val';
-    const a = document.createElement('a');
-    a.href = weblink;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.textContent = weblink;
-    a.style.color = '#ffe066';
-    a.style.textDecoration = 'underline';
-    valSpan.appendChild(a);
-    rowDiv.appendChild(keySpan);
-    rowDiv.appendChild(valSpan);
-    sidebar.appendChild(rowDiv);
-  }
-  // Do not show any content after the weblink
+  });
+  // Floating UI optional - for advanced positioning!
+  // You could add floating popups here if you want.
 }
 function clearSidebar() {
   // Optionally: keep previous info, or clear

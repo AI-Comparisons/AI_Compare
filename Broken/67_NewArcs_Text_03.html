@@ -245,6 +245,27 @@
 </div>
 
 <script>
+// DEBUG: Early error and data checks
+try {
+  console.log('[DEBUG] Script loaded');
+  if (typeof data !== 'undefined') {
+    console.log('[DEBUG] data:', data, 'length:', data && data.length);
+  } else {
+    console.warn('[DEBUG] data is undefined');
+  }
+  if (typeof nodes !== 'undefined') {
+    console.log('[DEBUG] nodes:', nodes, 'length:', nodes && nodes.length);
+  } else {
+    console.warn('[DEBUG] nodes is undefined');
+  }
+  if (typeof main !== 'undefined') {
+    console.log('[DEBUG] main:', main);
+  } else {
+    console.warn('[DEBUG] main is undefined');
+  }
+} catch (e) {
+  console.error('[DEBUG] Early script error:', e);
+}
 
 //initialize excel file data
 let data = [];
@@ -263,7 +284,7 @@ window.detachNode = function() {
 };
 
 // Auto-load demo Excel file on page load
-fetch('Data/AI_Tools_Table_07.xlsx')
+fetch('Data/AI_Tools_Table_12.xlsx')
   .then(resp => resp.arrayBuffer())
   .then(buf => {
     const workbook = XLSX.read(buf, {type: 'array'});
@@ -1263,8 +1284,8 @@ function bindEventListeners() {
     hslToRgba(h, s, l)
   ];
   // SVG-based arcs
-  const arcAngles = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpans = [40, 40, 40, 120, 40, 40, 40];
+  const arcAngles = [0, 60, 100, 120, 240, 260, 300];
+  const arcSpans = [60, 40, 20, 120, 20, 40, 60];
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('width', svgWidth);
@@ -1328,23 +1349,25 @@ function bindEventListeners() {
   }
   // Add SVG textPath overlays for arcs 0,1,2,3,4,5,6 with labels
   const arcTextLabels = [
-  'Open',         // Arc 0
-  'Structure',    // Arc 1
-  'Education',    // Arc 2
-  'Description',  // Arc 3 (label for arc text)
-  'Price',        // Arc 4
-  'Install',      // Arc 5
-  'Local'         // Arc 6
+  'Purpose',    // Arc 0
+  'Install',    // Arc 1
+  'Open',       // Arc 2
+  'Description',// Arc 3 (label for arc text)
+  'Local',      // Arc 4
+  'Price',     // Arc 5
+  'Education'  // Arc 6
   ];
   // Arc geometry
-  const arcAnglesText = [0, 40, 80, 120, 240, 280, 320];
-  const arcSpansText = [40, 40, 40, 120, 40, 40, 40];
+  const arcAnglesText = [0, 60, 100, 120, 240, 260, 300];
+  const arcSpansText = [60, 40, 20, 120, 20, 40, 60];
+  // Map arc index to data field
+  const arcDataFields = ["Purpose", "Install", "Open", null, "Local", "Price", "Suit"];
   for (let i = 0; i < arcTextLabels.length; i++) {
     if (!arcTextLabels[i]) continue;
     const rText = (arcSize/2) - arcPadding + arcStroke/2 + 12;
     let arcPath, arcId;
     if (i === 3) {
-      // Restore arc 3 text to original: start at 240, end at 120, reverse direction (sweep-flag=0)
+      // Arc 3: label path is reversed (sweep-flag=0)
       const arc3Start = 240;
       const arc3End = 120;
       const x1t = (svgWidth/2) + rText * Math.cos((arc3Start-90)*Math.PI/180);
@@ -1371,6 +1394,7 @@ function bindEventListeners() {
       ].join(' ');
       arcId = `arc${i}-text-path-${Math.random().toString(36).substr(2,9)}`;
     }
+    // Draw the fixed label for every arc (always the same as before)
     const arcPathElem = document.createElementNS(svgNS, 'path');
     arcPathElem.setAttribute('id', arcId);
     arcPathElem.setAttribute('d', arcPath);
@@ -1392,34 +1416,31 @@ function bindEventListeners() {
     svg.appendChild(textElem);
   }
   // Inject node-specific Purpose/Description content along arc 3 (120° segment)
+  // Arc 3: multi-line content (Description) as before
   try {
     const dataIdx = typeof node.idx === 'number' ? node.idx : parseInt(node.el.dataset.dataIdx, 10);
     const descriptionText = (data[dataIdx] && (data[dataIdx]["Description"] || data[dataIdx]["Purpose/Description"] || data[dataIdx]["Brief Purpose/Description"] || data[dataIdx]["Brief Purpose"])) || '';
     if (descriptionText) {
-      // Layout parameters
+      // Layout parameters (same as before)
       const arc3Start = 240; // degrees
       const arc3End = 120;   // degrees (reverse direction)
       const spanDeg = 120;
-      // Use a smaller radius for a tighter curve (inward offset)
-      const tightenPx = 16; // tweak 16-32 for taste
-      const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx; // inward-shifted center
-      const lineHeight = 14; // px
-      const fontSizePx = 12; // px
+      const tightenPx = 16;
+      const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx;
+      const lineHeight = 14;
+      const fontSizePx = 12;
       const maxLines = Math.max(2, Math.min(5, Math.floor((arcStroke - 8) / lineHeight)));
-      const charWidth = fontSizePx * 0.6; // rough average width per char
-
-      // Helper to approximate max chars per line from arc length
+      const charWidth = fontSizePx * 0.6;
       function maxCharsAtRadius(r) {
-        const pathLen = (2 * Math.PI * r) * (spanDeg / 360); // arc length
-        return Math.max(8, Math.floor((pathLen - 24) / charWidth)); // small margin
+        const pathLen = (2 * Math.PI * r) * (spanDeg / 360);
+        return Math.max(8, Math.floor((pathLen - 24) / charWidth));
       }
-      // Word-wrap into up to maxLines lines
       function wrapIntoLines(text, lines) {
         const words = (text + '').split(/\s+/).filter(Boolean);
         const result = [];
         let iWord = 0;
         for (let i = 0; i < lines; i++) {
-          const r = rBase + ((i - (lines - 1) / 2) * lineHeight); // distribute within stroke
+          const r = rBase + ((i - (lines - 1) / 2) * lineHeight);
           const cap = maxCharsAtRadius(r);
           let line = '';
           while (iWord < words.length) {
@@ -1430,7 +1451,6 @@ function bindEventListeners() {
           result.push(line);
           if (iWord >= words.length) break;
         }
-        // If leftover words, append ellipsis to last non-empty line
         if (iWord < words.length && result.length > 0) {
           const lastIdx = result.length - 1;
           if (result[lastIdx]) result[lastIdx] = result[lastIdx].replace(/[\s.]+$/, '') + '…';
@@ -1438,19 +1458,14 @@ function bindEventListeners() {
         return result;
       }
       const lines = wrapIntoLines(descriptionText, maxLines);
-
-      // Create a group to hold the multi-line curved text
       const contentGroup = document.createElementNS(svgNS, 'g');
       contentGroup.setAttribute('data-arc', 'description-text');
-      // Move the curved text up by ~3 line-heights in screen Y
       const yShift = -1.25 * lineHeight;
       contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
-
       for (let i = 0; i < lines.length; i++) {
         const textLine = lines[i];
         if (!textLine) continue;
         const rText = rBase + ((i - (lines.length - 1) / 2) * lineHeight);
-        // Build reversed arc path for this radius (sweep-flag=0)
         const x1t = (svgWidth/2) + rText * Math.cos((arc3Start-90)*Math.PI/180);
         const y1t = (svgWidth/2) + rText * Math.sin((arc3Start-90)*Math.PI/180);
         const x2t = (svgWidth/2) + rText * Math.cos((arc3End-90)*Math.PI/180);
@@ -1461,7 +1476,89 @@ function bindEventListeners() {
         pathEl.setAttribute('d', `M ${x1t} ${y1t} A ${rText} ${rText} 0 0 0 ${x2t} ${y2t}`);
         pathEl.setAttribute('fill', 'none');
         contentGroup.appendChild(pathEl);
+        const textEl = document.createElementNS(svgNS, 'text');
+        textEl.setAttribute('fill', '#fff');
+        textEl.setAttribute('font-size', `${fontSizePx}px`);
+        textEl.setAttribute('font-weight', '600');
+        textEl.setAttribute('text-anchor', 'middle');
+        textEl.setAttribute('dominant-baseline', 'middle');
+        textEl.setAttribute('pointer-events', 'none');
+        textEl.setAttribute('style', 'letter-spacing:0.3px; filter: drop-shadow(0 1px 4px #000a);');
+        const textPathEl = document.createElementNS(svgNS, 'textPath');
+        textPathEl.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${arcId}`);
+        textPathEl.setAttribute('startOffset', '50%');
+        textPathEl.textContent = textLine;
+        textEl.appendChild(textPathEl);
+        contentGroup.appendChild(textEl);
+      }
+      svg.appendChild(contentGroup);
+    }
+  } catch (e) {
+    // Fail-safe: don't block arcs if data missing
+  }
 
+  // For arcs 0,1,2,4,5,6: add multi-line, curved content from Excel, following the arc's geometry
+  try {
+    const dataIdx = typeof node.idx === 'number' ? node.idx : parseInt(node.el.dataset.dataIdx, 10);
+    const arcDataFields = ["Purpose", "Install", "Open", null, "Local", "Price", "Suit"];
+    for (let i of [0,1,2,4,5,6]) {
+      const field = arcDataFields[i];
+      if (!field || !data[dataIdx] || !data[dataIdx][field]) continue;
+      const arcStart = arcAnglesText[i];
+      const arcEnd = arcStart + arcSpansText[i];
+      const spanDeg = arcSpansText[i];
+      const tightenPx = 16;
+      const rBase = (arcSize/2) - arcPadding + arcStroke/2 - tightenPx;
+      const lineHeight = 14;
+      const fontSizePx = 12;
+      const maxLines = Math.max(2, Math.min(5, Math.floor((arcStroke - 8) / lineHeight)));
+      const charWidth = fontSizePx * 0.6;
+      function maxCharsAtRadius(r) {
+        const pathLen = (2 * Math.PI * r) * (spanDeg / 360);
+        return Math.max(8, Math.floor((pathLen - 24) / charWidth));
+      }
+      function wrapIntoLines(text, lines) {
+        const words = (text + '').split(/\s+/).filter(Boolean);
+        const result = [];
+        let iWord = 0;
+        for (let j = 0; j < lines; j++) {
+          const r = rBase + ((j - (lines.length - 1) / 2) * lineHeight);
+          const cap = maxCharsAtRadius(r);
+          let line = '';
+          while (iWord < words.length) {
+            const w = words[iWord];
+            const next = line ? line + ' ' + w : w;
+            if (next.length <= cap) { line = next; iWord++; } else { break; }
+          }
+          result.push(line);
+          if (iWord >= words.length) break;
+        }
+        if (iWord < words.length && result.length > 0) {
+          const lastIdx = result.length - 1;
+          if (result[lastIdx]) result[lastIdx] = result[lastIdx].replace(/[\s.]+$/, '') + '…';
+        }
+        return result;
+      }
+      const lines = wrapIntoLines(data[dataIdx][field], maxLines);
+      const contentGroup = document.createElementNS(svgNS, 'g');
+      contentGroup.setAttribute('data-arc', `arc${i}-content-text`);
+      const yShift = -1.25 * lineHeight;
+      contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
+      for (let j = 0; j < lines.length; j++) {
+        const textLine = lines[j];
+        if (!textLine) continue;
+        const rText = rBase + ((j - (lines.length - 1) / 2) * lineHeight);
+        // Build arc path for this radius (follow the arc's geometry)
+        const x1t = (svgWidth/2) + rText * Math.cos((arcStart-90)*Math.PI/180);
+        const y1t = (svgWidth/2) + rText * Math.sin((arcStart-90)*Math.PI/180);
+        const x2t = (svgWidth/2) + rText * Math.cos((arcEnd-90)*Math.PI/180);
+        const y2t = (svgWidth/2) + rText * Math.sin((arcEnd-90)*Math.PI/180);
+        const arcId = `arc${i}-content-${Math.random().toString(36).slice(2)}`;
+        const pathEl = document.createElementNS(svgNS, 'path');
+        pathEl.setAttribute('id', arcId);
+        pathEl.setAttribute('d', `M ${x1t} ${y1t} A ${rText} ${rText} 0 ${spanDeg>180?1:0} 1 ${x2t} ${y2t}`);
+        pathEl.setAttribute('fill', 'none');
+        contentGroup.appendChild(pathEl);
         const textEl = document.createElementNS(svgNS, 'text');
         textEl.setAttribute('fill', '#fff');
         textEl.setAttribute('font-size', `${fontSizePx}px`);
