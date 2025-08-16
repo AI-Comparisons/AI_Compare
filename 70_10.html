@@ -183,8 +183,8 @@
     /* New single-line row formatting for sidebar */
     .sidebar-row {
       width: 100%;
-      margin-bottom: 12px;
-      font-size: 1.06em;
+      margin-bottom: 10px;
+      font-size: 1.00em;
       line-height: 1.35;
     }
     .sidebar-key {
@@ -228,23 +228,29 @@
   </style>
 </head>
 <body>
+
   <canvas id="lines-canvas"></canvas>
   <div id="main"></div>
-  <div id="sidebar"></div>
-  <div id="legend"></div>
+  <div id="sidebar">
+    <div id="excel-upload" style="background:#232c3a;padding:8px 18px 8px 12px;border-radius:8px;box-shadow:0 2px 12px #0007;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <label for="excelFileInput" style="color:#ffe;font-weight:bold;white-space:nowrap;">Load Excel:</label>
+        <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="margin-left:0;">
+        <span id="excelFileName" style="color:#ffe;font-size:0.80em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;"></span>
+      </div>
+    </div>
+    <div id="legend"></div>
+  </div>
 
-
-<!-- SheetJS (xlsx) CDN for Excel parsing -->
-<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-
-<!-- File input for Excel upload -->
-<div style="position:fixed;top:10px;right:400px;z-index:2000;background:#232c3a;padding:8px 18px 8px 12px;border-radius:8px;box-shadow:0 2px 12px #0007;">
-  <label style="color:#ffe;font-weight:bold;">Load Excel:
-    <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="margin-left:8px;">
-  </label>
-</div>
+  <!-- SheetJS (xlsx) CDN for Excel parsing -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
 <script>
+// Show selected file name next to the input
+document.getElementById('excelFileInput').addEventListener('change', function(e) {
+  const fileNameSpan = document.getElementById('excelFileName');
+  fileNameSpan.textContent = e.target.files && e.target.files.length > 0 ? e.target.files[0].name : '';
+});
 
 //initialize excel file data
 let data = [];
@@ -375,7 +381,11 @@ function initializeApp() {
   // Clear previous nodes, legend, sidebar
   document.getElementById('main').innerHTML = '';
   document.getElementById('legend').innerHTML = '';
-  document.getElementById('sidebar').innerHTML = '';
+  // Only remove sidebar content except the legend
+  const sidebar = document.getElementById('sidebar');
+  Array.from(sidebar.children).forEach(child => {
+    if (child.id !== 'legend' && child.id !== 'excel-upload') sidebar.removeChild(child);
+  });
   // Reset global variables
   // Reset global variables
   window.typeColors = {};
@@ -1342,9 +1352,9 @@ function bindEventListeners() {
   for (let i = 0; i < arcTextLabels.length; i++) {
     if (!arcTextLabels[i]) continue;
     const rText = (arcSize/2) - arcPadding + arcStroke/2 + 12;
-    let arcPath, arcId;
+    let arcPath, arcId, invert = false;
     if (i === 3) {
-      // Restore arc 3 text to original: start at 240, end at 120, reverse direction (sweep-flag=0)
+      // Arc 3: original, reversed
       const arc3Start = 240;
       const arc3End = 120;
       const x1t = (svgWidth/2) + rText * Math.cos((arc3Start-90)*Math.PI/180);
@@ -1356,6 +1366,21 @@ function bindEventListeners() {
         `A ${rText} ${rText} 0 0 0 ${x2t} ${y2t}`
       ].join(' ');
       arcId = `arc3-text-path-${Math.random().toString(36).substr(2,9)}`;
+    } else if (i === 2 || i === 4) {
+      // Invert arcs 2 and 4
+      const startAngle = arcAnglesText[i] + arcSpansText[i];
+      const endAngle = arcAnglesText[i];
+      const span = arcSpansText[i];
+      const x1t = (svgWidth/2) + rText * Math.cos((startAngle-90)*Math.PI/180);
+      const y1t = (svgWidth/2) + rText * Math.sin((startAngle-90)*Math.PI/180);
+      const x2t = (svgWidth/2) + rText * Math.cos((endAngle-90)*Math.PI/180);
+      const y2t = (svgWidth/2) + rText * Math.sin((endAngle-90)*Math.PI/180);
+      arcPath = [
+        `M ${x1t} ${y1t}`,
+        `A ${rText} ${rText} 0 ${span>180?1:0} 0 ${x2t} ${y2t}`
+      ].join(' ');
+      arcId = `arc${i}-text-path-${Math.random().toString(36).substr(2,9)}`;
+      invert = true;
     } else {
       // All other arcs: normal direction
       const startAngle = arcAnglesText[i];
@@ -1378,7 +1403,7 @@ function bindEventListeners() {
     svg.appendChild(arcPathElem);
     const textElem = document.createElementNS(svgNS, 'text');
     textElem.setAttribute('fill', '#ffe066');
-    textElem.setAttribute('font-size', '1.25em');
+    textElem.setAttribute('font-size', '1.10em');
     textElem.setAttribute('font-weight', 'bold');
     textElem.setAttribute('text-anchor', 'middle');
     textElem.setAttribute('dominant-baseline', 'middle');
@@ -1387,6 +1412,7 @@ function bindEventListeners() {
     const textPath = document.createElementNS(svgNS, 'textPath');
     textPath.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${arcId}`);
     textPath.setAttribute('startOffset', '50%');
+    if (invert) textPath.setAttribute('side', 'right');
     textPath.textContent = arcTextLabels[i];
     textElem.appendChild(textPath);
     svg.appendChild(textElem);
@@ -1440,18 +1466,23 @@ function bindEventListeners() {
         }
         return result;
       }
-      let lines;
-      if (arcIdx === 3) {
-        // For arc 3: use word wrapping to fit text to arc borders
-        lines = wrapIntoLines(arcContent, maxLines);
-      } else {
-        lines = (arcContent + '').split(/\r?\n/).filter(Boolean).slice(0, maxLines);
-        while (lines.length < maxLines) lines.push('');
-      }
+      // Split by line breaks, then word-wrap each line, flatten, and trim to maxLines
+      let lines = [];
+      (arcContent + '').split(/\r?\n/).filter(Boolean).forEach(line => {
+        lines.push(...wrapIntoLines(line, maxLines));
+      });
+      lines = lines.slice(0, maxLines);
+      while (lines.length < maxLines) lines.push('');
       const contentGroup = document.createElementNS(svgNS, 'g');
       contentGroup.setAttribute('data-arc', `arc${arcIdx}-content-text`);
-      const yShift = -1.25 * lineHeight;
-      contentGroup.setAttribute('transform', `translate(0, ${yShift})`);
+  // Remove yShift for all arcs so concentric circles are truly centered
+      // Move arc 3 text arcs up by half a line height, others unchanged
+      if (arcIdx === 3) {
+        // Move arc 3 text arcs up in y by half a line height (negative value moves up in SVG)
+        contentGroup.setAttribute('transform', `translate(0, ${-1.5 * lineHeight})`);
+      } else {
+        contentGroup.setAttribute('transform', `translate(0, 0)`);
+      }
       // For arcs 0,1,2,4,5,6: evenly space 4 text lines between outer and inner edge, each on its own arc path
       let numLines = 4;
       if (arcIdx === 3) {
@@ -1487,20 +1518,35 @@ function bindEventListeners() {
           contentGroup.appendChild(textEl);
         }
       } else {
-        // For arcs 0,1,2,4,5,6: always 4 lines, evenly spaced between outer and inner edge
-        const outerRadius = (arcSize/2) - arcPadding + arcStroke/2 - 8;
-        const innerRadius = (arcSize/2) - arcPadding - arcStroke/2 + 8;
+        // For arcs 0,1,2,4,5,6: keep all text arcs the same, but populate content from outermost to innermost
         for (let j = 0; j < numLines; j++) {
+          // Place the first content line on the outermost arc, next on next, etc.
           const textLine = lines[j] || '';
           if (!textLine) continue;
-          // Evenly space radii from outer to inner
-          const rText = outerRadius - j * ((outerRadius - innerRadius) / (numLines - 1));
-          let x1t = (svgWidth/2) + rText * Math.cos((arcStart-90)*Math.PI/180);
-          let y1t = (svgWidth/2) + rText * Math.sin((arcStart-90)*Math.PI/180);
-          let x2t = (svgWidth/2) + rText * Math.cos((arcEnd-90)*Math.PI/180);
-          let y2t = (svgWidth/2) + rText * Math.sin((arcEnd-90)*Math.PI/180);
-          let arcId = `arc${arcIdx}-content-${Math.random().toString(36).slice(2)}`;
-          let pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 ${spanDeg>180?1:0} 1 ${x2t} ${y2t}`;
+          // Outermost arc is j=0, innermost is j=numLines-1
+          // So rText decreases as j increases
+          const rText = rBase + ((numLines - 1 - j) - (lines.length - 1) / 2) * lineHeight;
+          let x1t, y1t, x2t, y2t, arcId, pathD, invert = false;
+          if (arcIdx === 2 || arcIdx === 4) {
+            // Invert arcs 2 and 4 content text
+            const startAngle = arcEnd;
+            const endAngle = arcStart;
+            x1t = (svgWidth/2) + rText * Math.cos((startAngle-90)*Math.PI/180);
+            y1t = (svgWidth/2) + rText * Math.sin((startAngle-90)*Math.PI/180);
+            x2t = (svgWidth/2) + rText * Math.cos((endAngle-90)*Math.PI/180);
+            y2t = (svgWidth/2) + rText * Math.sin((endAngle-90)*Math.PI/180);
+            arcId = `arc${arcIdx}-content-${Math.random().toString(36).slice(2)}`;
+            pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 ${spanDeg>180?1:0} 0 ${x2t} ${y2t}`;
+            invert = true;
+          } else {
+            // All other arcs: normal direction
+            x1t = (svgWidth/2) + rText * Math.cos((arcStart-90)*Math.PI/180);
+            y1t = (svgWidth/2) + rText * Math.sin((arcStart-90)*Math.PI/180);
+            x2t = (svgWidth/2) + rText * Math.cos((arcEnd-90)*Math.PI/180);
+            y2t = (svgWidth/2) + rText * Math.sin((arcEnd-90)*Math.PI/180);
+            arcId = `arc${arcIdx}-content-${Math.random().toString(36).slice(2)}`;
+            pathD = `M ${x1t} ${y1t} A ${rText} ${rText} 0 ${spanDeg>180?1:0} 1 ${x2t} ${y2t}`;
+          }
           const pathEl = document.createElementNS(svgNS, 'path');
           pathEl.setAttribute('id', arcId);
           pathEl.setAttribute('d', pathD);
@@ -1517,6 +1563,7 @@ function bindEventListeners() {
           const textPathEl = document.createElementNS(svgNS, 'textPath');
           textPathEl.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${arcId}`);
           textPathEl.setAttribute('startOffset', '50%');
+          if (invert) textPathEl.setAttribute('side', 'right');
           textPathEl.textContent = textLine;
           textEl.appendChild(textPathEl);
           contentGroup.appendChild(textEl);
@@ -1895,7 +1942,10 @@ function drawTypeLines() {
 // Sidebar logic
 const sidebar = document.getElementById('sidebar');
 function showSidebar(row, nodeEl) {
-  sidebar.innerHTML = '';
+  // Remove all sidebar children except the legend and excel-upload
+  Array.from(sidebar.children).forEach(child => {
+    if (child.id !== 'legend' && child.id !== 'excel-upload') sidebar.removeChild(child);
+  });
   // Show all non-empty fields except Name, Type, Web Link
   // Always show Type at the top if present
   if (row['Type'] && String(row['Type']).trim() !== '') {
@@ -1926,7 +1976,7 @@ function showSidebar(row, nodeEl) {
     rowDiv.appendChild(keySpan);
     rowDiv.appendChild(valSpan);
     if (cat === 'Description') {
-      rowDiv.style.marginBottom = '34px';
+  // Use default .sidebar-row margin (12px) for Description, making it dynamic like others
     }
     sidebar.appendChild(rowDiv);
   }
